@@ -45,6 +45,14 @@ internal/
 
 `cmd/*/main.go` 只负责声明服务名、默认端口和服务专属路由。公共启动逻辑放在 `internal/bootstrap`，避免四个服务重复写信号处理、日志、中间件和 HTTP server。
 
+HTTP 路由框架使用 `net/http + chi`：
+
+1. `internal/bootstrap.RunHTTPService` 创建 `chi.NewRouter()`，作为所有服务共享的 HTTP handler。
+2. `RegisterRoutes` 类型接收 `chi.Router`，各服务只负责注册自身业务端点。
+3. 公共健康检查由 `internal/httpserver.RegisterHealthRoutes` 注册到同一个 chi router。
+4. request_id、access log、recovery 通过 `router.Use` 挂载，确保所有 chi 路由都经过统一中间件。
+5. `router.NotFound` 和 `router.MethodNotAllowed` 返回统一错误码 JSON，避免 chi 默认纯文本响应破坏 API 格式。
+
 ## 4. 配置管理
 
 配置加载入口是 `internal/config.Load`。
@@ -108,6 +116,7 @@ remote_addr
 | `UNAUTHORIZED` | 401 | 未认证 |
 | `FORBIDDEN` | 403 | 无权限 |
 | `NOT_FOUND` | 404 | 资源不存在 |
+| `METHOD_NOT_ALLOWED` | 405 | 请求方法不支持 |
 | `CONFLICT` | 409 | 资源冲突 |
 | `NOT_IMPLEMENTED` | 501 | 功能尚未实现 |
 | `SERVICE_UNAVAILABLE` | 503 | 依赖服务不可用 |
@@ -257,4 +266,3 @@ make migrate-up
 4. `runtime-worker` 中实现可恢复执行主循环。
 5. `tool-gateway` 中实现工具幂等、风险判断和审批创建。
 6. `llm-gateway` 中实现模型调用抽象、超时、重试和 token 统计。
-

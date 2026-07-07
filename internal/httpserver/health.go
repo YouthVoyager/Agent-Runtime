@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"agent-runtime/internal/config"
 	"agent-runtime/internal/version"
 )
@@ -18,13 +20,8 @@ type HealthPayload struct {
 	Uptime    string `json:"uptime"`
 }
 
-func RegisterHealthRoutes(mux *http.ServeMux, cfg config.Config, startedAt time.Time) {
+func RegisterHealthRoutes(router chi.Router, cfg config.Config, startedAt time.Time) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-			return
-		}
-
 		WriteJSON(w, http.StatusOK, HealthPayload{
 			Status:    "ok",
 			Service:   cfg.ServiceName,
@@ -36,7 +33,7 @@ func RegisterHealthRoutes(mux *http.ServeMux, cfg config.Config, startedAt time.
 		})
 	}
 
-	mux.HandleFunc("/healthz", handler)
-	mux.HandleFunc("/livez", handler)
-	mux.HandleFunc("/readyz", handler)
+	router.Get("/healthz", handler)
+	router.Get("/livez", handler)
+	router.Get("/readyz", handler)
 }

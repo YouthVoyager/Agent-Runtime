@@ -10,14 +10,15 @@ import (
 type Code string
 
 const (
-	CodeInternal       Code = "INTERNAL_ERROR"
-	CodeInvalidArg     Code = "INVALID_ARGUMENT"
-	CodeNotFound       Code = "NOT_FOUND"
-	CodeUnauthorized   Code = "UNAUTHORIZED"
-	CodeForbidden      Code = "FORBIDDEN"
-	CodeConflict       Code = "CONFLICT"
-	CodeUnavailable    Code = "SERVICE_UNAVAILABLE"
-	CodeNotImplemented Code = "NOT_IMPLEMENTED"
+	CodeInternal         Code = "INTERNAL_ERROR"
+	CodeInvalidArg       Code = "INVALID_ARGUMENT"
+	CodeNotFound         Code = "NOT_FOUND"
+	CodeMethodNotAllowed Code = "METHOD_NOT_ALLOWED"
+	CodeUnauthorized     Code = "UNAUTHORIZED"
+	CodeForbidden        Code = "FORBIDDEN"
+	CodeConflict         Code = "CONFLICT"
+	CodeUnavailable      Code = "SERVICE_UNAVAILABLE"
+	CodeNotImplemented   Code = "NOT_IMPLEMENTED"
 )
 
 type Error struct {
@@ -73,6 +74,8 @@ func HTTPStatus(code Code) int {
 		return http.StatusForbidden
 	case CodeNotFound:
 		return http.StatusNotFound
+	case CodeMethodNotAllowed:
+		return http.StatusMethodNotAllowed
 	case CodeConflict:
 		return http.StatusConflict
 	case CodeUnavailable:

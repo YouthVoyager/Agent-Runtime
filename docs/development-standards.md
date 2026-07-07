@@ -7,7 +7,7 @@
 3. 包名使用小写单词，避免下划线和复数泛化命名。
 4. 公共能力放在 `internal/` 下，避免未稳定 API 被外部项目依赖。
 5. 服务入口只放启动编排，业务逻辑必须下沉到 `internal/` 包。
-6. 所有 HTTP 请求必须经过 request_id、access log 和 recovery middleware。
+6. HTTP 路由默认使用 `net/http + chi`，所有 HTTP 请求必须经过 request_id、access log 和 recovery middleware。
 7. 所有错误返回必须使用统一错误码结构，不直接返回散乱字符串。
 8. 默认注释使用中文，复杂逻辑必须解释业务原因，不写无意义注释。
 
@@ -77,7 +77,8 @@ ai自动提交: <summary>
 1. 每个请求必须带 `X-Request-ID`，如果调用方没有传入，服务端自动生成。
 2. 日志必须包含 `service`、`env`、`request_id`、`method`、`path`、`status`、`duration_ms`。
 3. 健康检查统一暴露 `/healthz`、`/livez`、`/readyz`。
-4. 业务错误统一返回：
+4. 未匹配路由和方法不支持必须通过统一错误码返回，不能使用框架默认纯文本响应。
+5. 业务错误统一返回：
 
 ```json
 {
@@ -87,4 +88,3 @@ ai自动提交: <summary>
   }
 }
 ```
-

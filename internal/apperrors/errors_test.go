@@ -25,4 +25,7 @@ func TestHTTPStatus(t *testing.T) {
 	if status := HTTPStatus(CodeNotImplemented); status != http.StatusNotImplemented {
 		t.Fatalf("status = %d, want %d", status, http.StatusNotImplemented)
 	}
+	if status := HTTPStatus(CodeMethodNotAllowed); status != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", status, http.StatusMethodNotAllowed)
+	}
 }

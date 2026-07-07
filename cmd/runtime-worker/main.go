@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/go-chi/chi/v5"
+
 	"agent-runtime/internal/bootstrap"
 	"agent-runtime/internal/config"
 	"agent-runtime/internal/httpserver"
@@ -17,8 +19,8 @@ func main() {
 	}
 }
 
-func registerRoutes(mux *http.ServeMux, cfg config.Config, logger *slog.Logger) {
-	mux.HandleFunc("/runtime/v1/status", func(w http.ResponseWriter, r *http.Request) {
+func registerRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) {
+	router.Get("/runtime/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteJSON(w, http.StatusOK, map[string]any{
 			"service": cfg.ServiceName,
 			"role":    "Agent Runtime 后台执行进程，后续负责 step、checkpoint、cancel 和 resume",
