@@ -1,0 +1,139 @@
+{
+  "info": {
+    "name": "Agent Runtime Task API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "jwt_token",
+      "value": "replace-with-hs256-jwt"
+    },
+    {
+      "key": "task_id",
+      "value": "replace-with-task-id"
+    },
+    {
+      "key": "status",
+      "value": "QUEUED"
+    }
+  ],
+  "item": [
+    {
+      "name": "Create Task",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "postman-create-task"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/tasks",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tasks"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"goal\": \"分析需求文档并生成生产级 Go 技术方案\",\n  \"budget\": {\n    \"max_steps\": 50,\n    \"max_tokens\": 200000,\n    \"max_tool_calls\": 40,\n    \"max_cost_usd\": 10\n  },\n  \"constraints\": {\n    \"language\": \"zh-CN\",\n    \"require_approval_for_high_risk_tools\": true\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "List Tasks",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "postman-list-tasks"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/tasks?status={{status}}&page=1&page_size=20&sort=created_at_desc",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tasks"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "{{status}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "page_size",
+              "value": "20"
+            },
+            {
+              "key": "sort",
+              "value": "created_at_desc"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Task",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          },
+          {
+            "key": "X-Request-ID",
+            "value": "postman-get-task"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/tasks/{{task_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tasks",
+            "{{task_id}}"
+          ]
+        }
+      }
+    }
+  ]
+}

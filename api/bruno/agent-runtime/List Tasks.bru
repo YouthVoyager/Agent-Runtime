@@ -1,0 +1,16 @@
+meta {
+  name: List Tasks
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/api/v1/tasks?status={{status}}&page=1&page_size=20&sort=created_at_desc
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{jwt_token}}
+  X-Request-ID: bruno-list-tasks
+}

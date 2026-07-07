@@ -18,7 +18,8 @@ insert into agent_tasks (
     goal,
     status,
     budget,
-    budget_usage
+    budget_usage,
+    trace_id
 ) values (
     $1,
     $2,
@@ -26,7 +27,8 @@ insert into agent_tasks (
     $4,
     $5,
     $6,
-    $7
+    $7,
+    $8
 )
 returning task_id, tenant_id, user_id, goal, status, budget, budget_usage, workflow_id, trace_id, last_error_code, last_error_message, created_at, updated_at
 `
@@ -39,6 +41,7 @@ type CreateAgentTaskParams struct {
 	Status      TaskStatus      `db:"status" json:"status"`
 	Budget      json.RawMessage `db:"budget" json:"budget"`
 	BudgetUsage json.RawMessage `db:"budget_usage" json:"budget_usage"`
+	TraceID     *string         `db:"trace_id" json:"trace_id"`
 }
 
 func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams) (AgentTask, error) {
@@ -50,6 +53,7 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		arg.Status,
 		arg.Budget,
 		arg.BudgetUsage,
+		arg.TraceID,
 	)
 	var i AgentTask
 	err := row.Scan(
@@ -121,6 +125,118 @@ type ListAgentTasksByTenantParams struct {
 
 func (q *Queries) ListAgentTasksByTenant(ctx context.Context, arg ListAgentTasksByTenantParams) ([]AgentTask, error) {
 	rows, err := q.db.Query(ctx, listAgentTasksByTenant, arg.TenantID, arg.OffsetRows, arg.LimitRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentTask{}
+	for rows.Next() {
+		var i AgentTask
+		if err := rows.Scan(
+			&i.TaskID,
+			&i.TenantID,
+			&i.UserID,
+			&i.Goal,
+			&i.Status,
+			&i.Budget,
+			&i.BudgetUsage,
+			&i.WorkflowID,
+			&i.TraceID,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgentTasksByTenantAndStatus = `-- name: ListAgentTasksByTenantAndStatus :many
+select task_id, tenant_id, user_id, goal, status, budget, budget_usage, workflow_id, trace_id, last_error_code, last_error_message, created_at, updated_at
+from agent_tasks
+where tenant_id = $1
+  and status = $2
+order by created_at desc, task_id desc
+limit $4
+offset $3
+`
+
+type ListAgentTasksByTenantAndStatusParams struct {
+	TenantID   string     `db:"tenant_id" json:"tenant_id"`
+	Status     TaskStatus `db:"status" json:"status"`
+	OffsetRows int32      `db:"offset_rows" json:"offset_rows"`
+	LimitRows  int32      `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) ListAgentTasksByTenantAndStatus(ctx context.Context, arg ListAgentTasksByTenantAndStatusParams) ([]AgentTask, error) {
+	rows, err := q.db.Query(ctx, listAgentTasksByTenantAndStatus,
+		arg.TenantID,
+		arg.Status,
+		arg.OffsetRows,
+		arg.LimitRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentTask{}
+	for rows.Next() {
+		var i AgentTask
+		if err := rows.Scan(
+			&i.TaskID,
+			&i.TenantID,
+			&i.UserID,
+			&i.Goal,
+			&i.Status,
+			&i.Budget,
+			&i.BudgetUsage,
+			&i.WorkflowID,
+			&i.TraceID,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgentTasksByUser = `-- name: ListAgentTasksByUser :many
+select task_id, tenant_id, user_id, goal, status, budget, budget_usage, workflow_id, trace_id, last_error_code, last_error_message, created_at, updated_at
+from agent_tasks
+where tenant_id = $1
+  and user_id = $2
+order by created_at desc, task_id desc
+limit $4
+offset $3
+`
+
+type ListAgentTasksByUserParams struct {
+	TenantID   string `db:"tenant_id" json:"tenant_id"`
+	UserID     string `db:"user_id" json:"user_id"`
+	OffsetRows int32  `db:"offset_rows" json:"offset_rows"`
+	LimitRows  int32  `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) ListAgentTasksByUser(ctx context.Context, arg ListAgentTasksByUserParams) ([]AgentTask, error) {
+	rows, err := q.db.Query(ctx, listAgentTasksByUser,
+		arg.TenantID,
+		arg.UserID,
+		arg.OffsetRows,
+		arg.LimitRows,
+	)
 	if err != nil {
 		return nil, err
 	}

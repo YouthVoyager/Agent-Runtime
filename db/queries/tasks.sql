@@ -6,7 +6,8 @@ insert into agent_tasks (
     goal,
     status,
     budget,
-    budget_usage
+    budget_usage,
+    trace_id
 ) values (
     sqlc.arg(task_id),
     sqlc.arg(tenant_id),
@@ -14,7 +15,8 @@ insert into agent_tasks (
     sqlc.arg(goal),
     sqlc.arg(status),
     sqlc.arg(budget),
-    sqlc.arg(budget_usage)
+    sqlc.arg(budget_usage),
+    sqlc.narg(trace_id)
 )
 returning *;
 
@@ -29,6 +31,24 @@ limit 1;
 select *
 from agent_tasks
 where tenant_id = sqlc.arg(tenant_id)
+order by created_at desc, task_id desc
+limit sqlc.arg(limit_rows)
+offset sqlc.arg(offset_rows);
+
+-- name: ListAgentTasksByTenantAndStatus :many
+select *
+from agent_tasks
+where tenant_id = sqlc.arg(tenant_id)
+  and status = sqlc.arg(status)
+order by created_at desc, task_id desc
+limit sqlc.arg(limit_rows)
+offset sqlc.arg(offset_rows);
+
+-- name: ListAgentTasksByUser :many
+select *
+from agent_tasks
+where tenant_id = sqlc.arg(tenant_id)
+  and user_id = sqlc.arg(user_id)
 order by created_at desc, task_id desc
 limit sqlc.arg(limit_rows)
 offset sqlc.arg(offset_rows);

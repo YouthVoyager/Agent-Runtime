@@ -1,36 +1,421 @@
 openapi: 3.1.0
 info:
   title: Agent Runtime API
-  version: 0.1.0
-  description: Agent Runtime 当前服务骨架的 OpenAPI 占位文档，后续任务 API 按设计方案补全。
+  version: 0.3.0
+  description: Agent Runtime 第 3 周 Task API 第一版，覆盖任务创建、任务详情、任务列表、基础 JWT 鉴权和 tenant 隔离。
+servers:
+  - url: http://localhost:8080
+    description: 本地 API Service
+security:
+  - bearerAuth: []
 paths:
   /healthz:
     get:
       summary: 健康检查
+      security: []
       responses:
         "200":
           description: 服务可用
   /livez:
     get:
       summary: 存活检查
+      security: []
       responses:
         "200":
           description: 进程存活
   /readyz:
     get:
       summary: 就绪检查
+      security: []
       responses:
         "200":
           description: 服务就绪
   /api/v1/service-info:
     get:
       summary: API 服务信息
+      security: []
       responses:
         "200":
           description: 返回当前服务名称和职责
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceInfoResponse"
   /api/v1/tasks:
     post:
       summary: 创建 Agent 任务
+      description: 从 JWT 上下文读取 tenant_id 和 user_id，不信任请求体中的租户信息。创建成功后同事务写入 agent_tasks、agent_states、TASK_CREATED event 和 START_WORKFLOW outbox。
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
       responses:
-        "501":
-          description: 第 3 周实现任务创建闭环
+        "201":
+          description: 任务已创建，状态为 QUEUED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateTaskResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    get:
+      summary: 查询任务列表
+      description: 默认按 created_at desc、task_id desc 稳定排序。admin/owner 可查看租户内任务，普通 member 只查看自己创建的任务。
+      operationId: listTasks
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - created_at_desc
+            default: created_at_desc
+      responses:
+        "200":
+          description: 任务分页列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTasksResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/v1/tasks/{task_id}:
+    get:
+      summary: 查询任务详情
+      description: 查询始终携带 tenant_id；任务存在但当前用户不是创建者且不是 admin/owner 时返回 403。
+      operationId: getTask
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+      responses:
+        "200":
+          description: 任务详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetTaskResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: HS256 JWT。payload 必须包含 tenant_id，以及 user_id 或 sub；role 可选，admin/owner 可查看租户任务，默认 member。
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: 未认证或 JWT 无效
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: 已认证但无权限
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: 资源冲突
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unavailable:
+      description: 依赖服务不可用
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ServiceInfoResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - service
+            - role
+          properties:
+            service:
+              type: string
+            role:
+              type: string
+    CreateTaskRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - goal
+        - budget
+      properties:
+        goal:
+          type: string
+          minLength: 1
+          maxLength: 8000
+          example: 分析需求文档并生成生产级 Go 技术方案
+        budget:
+          $ref: "#/components/schemas/Budget"
+        constraints:
+          type: object
+          additionalProperties: true
+          example:
+            language: zh-CN
+            require_approval_for_high_risk_tools: true
+    Budget:
+      type: object
+      additionalProperties: false
+      required:
+        - max_steps
+        - max_tokens
+        - max_tool_calls
+        - max_cost_usd
+      properties:
+        max_steps:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 10000000
+        max_tool_calls:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        max_cost_usd:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 100000
+    BudgetUsage:
+      type: object
+      required:
+        - used_steps
+        - used_tokens
+        - used_tool_calls
+        - used_cost_usd
+      properties:
+        used_steps:
+          type: integer
+        used_tokens:
+          type: integer
+        used_tool_calls:
+          type: integer
+        used_cost_usd:
+          type: number
+    TaskStatus:
+      type: string
+      enum:
+        - QUEUED
+        - RUNNING
+        - WAITING_APPROVAL
+        - PAUSED
+        - CANCELING
+        - CANCELED
+        - SUCCEEDED
+        - FAILED
+    CreatedTask:
+      type: object
+      required:
+        - task_id
+        - status
+        - created_at
+      properties:
+        task_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        created_at:
+          type: string
+          format: date-time
+    TaskDetail:
+      type: object
+      required:
+        - task_id
+        - goal
+        - status
+        - current_step
+        - budget
+        - budget_usage
+        - created_at
+        - updated_at
+      properties:
+        task_id:
+          type: string
+        goal:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        current_step:
+          type: integer
+        budget:
+          $ref: "#/components/schemas/Budget"
+        budget_usage:
+          $ref: "#/components/schemas/BudgetUsage"
+        trace_id:
+          type: string
+        last_error_code:
+          type: string
+        last_error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TaskSummary:
+      type: object
+      required:
+        - task_id
+        - goal
+        - status
+        - budget
+        - budget_usage
+        - created_at
+        - updated_at
+      properties:
+        task_id:
+          type: string
+        goal:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        budget:
+          $ref: "#/components/schemas/Budget"
+        budget_usage:
+          $ref: "#/components/schemas/BudgetUsage"
+        trace_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateTaskResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/CreatedTask"
+    GetTaskResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/TaskDetail"
+    ListTasksResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - items
+            - page
+            - page_size
+            - has_more
+            - sort
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/TaskSummary"
+            page:
+              type: integer
+            page_size:
+              type: integer
+            has_more:
+              type: boolean
+            next_page:
+              type: integer
+            sort:
+              type: string
+              enum:
+                - created_at_desc
+            status:
+              $ref: "#/components/schemas/TaskStatus"
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: INVALID_ARGUMENT
+            message:
+              type: string
+              example: goal 不能为空
+            request_id:
+              type: string

@@ -37,6 +37,8 @@ type Querier interface {
 	ListAgentEventsByTask(ctx context.Context, arg ListAgentEventsByTaskParams) ([]AgentEvent, error)
 	ListAgentEventsByType(ctx context.Context, arg ListAgentEventsByTypeParams) ([]AgentEvent, error)
 	ListAgentTasksByTenant(ctx context.Context, arg ListAgentTasksByTenantParams) ([]AgentTask, error)
+	ListAgentTasksByTenantAndStatus(ctx context.Context, arg ListAgentTasksByTenantAndStatusParams) ([]AgentTask, error)
+	ListAgentTasksByUser(ctx context.Context, arg ListAgentTasksByUserParams) ([]AgentTask, error)
 	ListAgentTasksByUserAndStatus(ctx context.Context, arg ListAgentTasksByUserAndStatusParams) ([]AgentTask, error)
 	ListArtifactsByTask(ctx context.Context, arg ListArtifactsByTaskParams) ([]Artifact, error)
 	ListCheckpointsByTask(ctx context.Context, arg ListCheckpointsByTaskParams) ([]Checkpoint, error)

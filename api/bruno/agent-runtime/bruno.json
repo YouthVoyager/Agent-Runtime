@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Agent Runtime",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

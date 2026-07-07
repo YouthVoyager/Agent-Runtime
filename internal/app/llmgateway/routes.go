@@ -1,6 +1,7 @@
 package llmgateway
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -10,7 +11,7 @@ import (
 	httpserver "agent-runtime/internal/transport/http"
 )
 
-func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) {
+func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (func(context.Context) error, error) {
 	router.Get("/llm/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteJSON(w, http.StatusOK, map[string]any{
 			"service": cfg.ServiceName,
@@ -20,4 +21,5 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) {
 	})
 
 	logger.Info("llm-gateway 路由注册完成")
+	return nil, nil
 }

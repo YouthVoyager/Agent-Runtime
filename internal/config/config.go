@@ -29,6 +29,7 @@ type Config struct {
 	MinIOEndpoint     string
 	JaegerEndpoint    string
 	RequestIDHeader   string
+	JWTSecret         string
 }
 
 func Load(serviceName string, defaults Defaults) (Config, error) {
@@ -87,6 +88,7 @@ func Load(serviceName string, defaults Defaults) (Config, error) {
 		MinIOEndpoint:     env("MINIO_ENDPOINT", "localhost:9000"),
 		JaegerEndpoint:    env("JAEGER_ENDPOINT", "http://localhost:14268/api/traces"),
 		RequestIDHeader:   scopedEnv(prefix, "REQUEST_ID_HEADER", "X-Request-ID"),
+		JWTSecret:         scopedEnv(prefix, "JWT_SECRET", "local-dev-secret"),
 	}, nil
 }
 

@@ -1,0 +1,33 @@
+meta {
+  name: Create Task
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/api/v1/tasks
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{jwt_token}}
+  Content-Type: application/json
+  X-Request-ID: bruno-create-task
+}
+
+body:json {
+  {
+    "goal": "分析需求文档并生成生产级 Go 技术方案",
+    "budget": {
+      "max_steps": 50,
+      "max_tokens": 200000,
+      "max_tool_calls": 40,
+      "max_cost_usd": 10
+    },
+    "constraints": {
+      "language": "zh-CN",
+      "require_approval_for_high_risk_tools": true
+    }
+  }
+}

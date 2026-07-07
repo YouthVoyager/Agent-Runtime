@@ -61,7 +61,7 @@ func WithRecovery(logger *slog.Logger) Middleware {
 						"panic", recovered,
 						"stack", string(debug.Stack()),
 					)
-					apperrors.WriteJSON(w, apperrors.New(apperrors.CodeInternal, "系统内部错误"))
+					WriteError(w, r, apperrors.New(apperrors.CodeInternal, "系统内部错误"))
 				}
 			}()
 
