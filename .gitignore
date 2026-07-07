@@ -1,0 +1,10 @@
+.DS_Store
+.env
+*.log
+*.tmp
+coverage.out
+bin/
+dist/
+tmp/
+config/local.env
+

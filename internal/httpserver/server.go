@@ -1,0 +1,45 @@
+package httpserver
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+
+	"agent-runtime/internal/config"
+)
+
+func Run(ctx context.Context, cfg config.Config, logger *slog.Logger, handler http.Handler) error {
+	server := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           handler,
+		ReadTimeout:       cfg.ReadTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("HTTP 服务启动", "addr", cfg.HTTPAddr)
+		errCh <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+
+		logger.Info("开始优雅关闭 HTTP 服务", "timeout", cfg.ShutdownTimeout.String())
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
+		logger.Info("HTTP 服务已关闭")
+		return nil
+	}
+}
