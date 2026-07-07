@@ -32,11 +32,13 @@ type Config struct {
 	JWTSecret         string
 }
 
+// Load 读取服务配置，按服务级环境变量优先、全局环境变量兜底的顺序合并默认值。
 func Load(serviceName string, defaults Defaults) (Config, error) {
 	if strings.TrimSpace(serviceName) == "" {
 		return Config{}, errors.New("serviceName 不能为空")
 	}
 
+	// 本地开发默认读取 config/local.env；不存在时静默跳过，方便容器和 CI 只依赖环境变量。
 	configFile := strings.TrimSpace(os.Getenv("APP_CONFIG_FILE"))
 	if configFile == "" {
 		configFile = "config/local.env"
@@ -92,6 +94,7 @@ func Load(serviceName string, defaults Defaults) (Config, error) {
 	}, nil
 }
 
+// env 读取全局环境变量，空值时返回兜底值。
 func env(key string, fallback string) string {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -100,6 +103,7 @@ func env(key string, fallback string) string {
 	return value
 }
 
+// scopedEnv 优先读取服务前缀环境变量，再回退到全局环境变量。
 func scopedEnv(prefix string, key string, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(prefix + "_" + key)); value != "" {
 		return value
@@ -107,6 +111,7 @@ func scopedEnv(prefix string, key string, fallback string) string {
 	return env(key, fallback)
 }
 
+// durationEnv 读取并解析 duration 配置。
 func durationEnv(prefix string, key string, fallback time.Duration) (time.Duration, error) {
 	raw := scopedEnv(prefix, key, "")
 	if raw == "" {
@@ -120,11 +125,13 @@ func durationEnv(prefix string, key string, fallback time.Duration) (time.Durati
 	return value, nil
 }
 
+// envPrefix 将服务名转换成环境变量前缀。
 func envPrefix(serviceName string) string {
 	replacer := strings.NewReplacer("-", "_", ".", "_")
 	return strings.ToUpper(replacer.Replace(serviceName))
 }
 
+// loadEnvFileIfExists 读取本地 env 文件，并且不覆盖外部已经注入的环境变量。
 func loadEnvFileIfExists(path string) error {
 	if path == "" {
 		return nil
@@ -154,6 +161,7 @@ func loadEnvFileIfExists(path string) error {
 		if key == "" {
 			return fmt.Errorf("配置文件 %s 存在空 key", path)
 		}
+		// 外部环境变量优先级更高，避免本地文件覆盖 CI、容器或生产注入的配置。
 		if os.Getenv(key) == "" {
 			if err := os.Setenv(key, value); err != nil {
 				return fmt.Errorf("设置配置 %s 失败: %w", key, err)
@@ -166,6 +174,7 @@ func loadEnvFileIfExists(path string) error {
 	return nil
 }
 
+// trimEnvValue 去掉 env 文件值两侧成对的单引号或双引号。
 func trimEnvValue(value string) string {
 	if len(value) < 2 {
 		return value

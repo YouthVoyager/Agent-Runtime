@@ -15,6 +15,7 @@ const (
 	StatusFailed          Status = "FAILED"
 )
 
+// ParseStatus 标准化并校验任务状态字符串。
 func ParseStatus(raw string) (Status, bool) {
 	status := Status(strings.ToUpper(strings.TrimSpace(raw)))
 	switch status {
@@ -32,6 +33,7 @@ func ParseStatus(raw string) (Status, bool) {
 	}
 }
 
+// StatusForAPI 返回面向 API 的任务状态文本，未知状态会保留标准化后的原值。
 func StatusForAPI(status string) string {
 	parsed, ok := ParseStatus(status)
 	if !ok {

@@ -40,6 +40,7 @@ var (
 	ErrExpiredToken = errors.New("jwt token 已过期")
 )
 
+// JWTMiddleware 校验 Bearer JWT，并把用户和租户信息注入请求上下文。
 func JWTMiddleware(config JWTMiddlewareConfig) func(http.Handler) http.Handler {
 	now := config.Now
 	if now == nil {
@@ -60,6 +61,7 @@ func JWTMiddleware(config JWTMiddlewareConfig) func(http.Handler) http.Handler {
 				return
 			}
 
+			// sub 作为 user_id 的兼容兜底，便于接入只提供标准 subject 的身份系统。
 			user := User{
 				TenantID: strings.TrimSpace(claims.TenantID),
 				UserID:   firstNonBlank(claims.UserID, claims.Subject),
@@ -72,6 +74,7 @@ func JWTMiddleware(config JWTMiddlewareConfig) func(http.Handler) http.Handler {
 	}
 }
 
+// ParseAndVerifyJWT 解析并校验 HS256 JWT 的签名、必填身份字段和时间窗口。
 func ParseAndVerifyJWT(token string, secret string, now time.Time) (JWTClaims, error) {
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
@@ -91,6 +94,7 @@ func ParseAndVerifyJWT(token string, secret string, now time.Time) (JWTClaims, e
 		return JWTClaims{}, ErrInvalidToken
 	}
 
+	// 使用常量时间比较校验签名，避免签名比较过程泄露可利用的时间差。
 	signingInput := parts[0] + "." + parts[1]
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
@@ -113,6 +117,7 @@ func ParseAndVerifyJWT(token string, secret string, now time.Time) (JWTClaims, e
 	if claims.TenantID == "" || firstNonBlank(claims.UserID, claims.Subject) == "" {
 		return JWTClaims{}, ErrInvalidToken
 	}
+	// exp 和 nbf 使用 JWT 标准 Unix 秒，统一由调用方传入 now 以便测试稳定。
 	if claims.ExpiresAt != nil && now.Unix() >= *claims.ExpiresAt {
 		return JWTClaims{}, ErrExpiredToken
 	}
@@ -123,6 +128,7 @@ func ParseAndVerifyJWT(token string, secret string, now time.Time) (JWTClaims, e
 	return claims, nil
 }
 
+// decodeJWTPart 解码 JWT 的 base64url 分段并反序列化到目标结构。
 func decodeJWTPart(part string, dst any) error {
 	payload, err := base64.RawURLEncoding.DecodeString(part)
 	if err != nil {
@@ -131,6 +137,7 @@ func decodeJWTPart(part string, dst any) error {
 	return json.Unmarshal(payload, dst)
 }
 
+// bearerToken 从 Authorization 请求头中提取 Bearer token。
 func bearerToken(header string) (string, bool) {
 	scheme, token, ok := strings.Cut(strings.TrimSpace(header), " ")
 	if !ok || !strings.EqualFold(scheme, "Bearer") {
@@ -140,6 +147,7 @@ func bearerToken(header string) (string, bool) {
 	return token, token != ""
 }
 
+// firstNonBlank 返回第一个去除空白后不为空的字符串。
 func firstNonBlank(values ...string) string {
 	for _, value := range values {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {

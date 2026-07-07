@@ -29,6 +29,7 @@ type BudgetUsage struct {
 	UsedCostUSD   float64 `json:"used_cost_usd"`
 }
 
+// NormalizeGoal 清理并校验任务目标文本。
 func NormalizeGoal(goal string) (string, error) {
 	goal = strings.TrimSpace(goal)
 	if goal == "" {
@@ -40,6 +41,7 @@ func NormalizeGoal(goal string) (string, error) {
 	return goal, nil
 }
 
+// ValidateBudget 校验任务预算是否处在系统允许的安全范围内。
 func ValidateBudget(budget Budget) error {
 	if budget.MaxSteps <= 0 || budget.MaxSteps > MaxStepsLimit {
 		return fmt.Errorf("budget.max_steps 必须在 1 到 %d 之间", MaxStepsLimit)
@@ -56,6 +58,7 @@ func ValidateBudget(budget Budget) error {
 	return nil
 }
 
+// NormalizeJSONObject 规范化可选 JSON 对象，空值按空对象处理。
 func NormalizeJSONObject(raw json.RawMessage) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return json.RawMessage(`{}`), nil
@@ -65,6 +68,7 @@ func NormalizeJSONObject(raw json.RawMessage) (json.RawMessage, error) {
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return nil, fmt.Errorf("JSON 对象格式错误: %w", err)
 	}
+	// constraints 必须是对象，避免数组、字符串等类型进入状态表后影响后续 workflow 读取。
 	if _, ok := value.(map[string]any); !ok {
 		return nil, errors.New("必须是 JSON 对象")
 	}

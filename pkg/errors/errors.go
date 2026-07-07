@@ -27,14 +27,17 @@ type Error struct {
 	cause   error
 }
 
+// New 创建不包裹底层原因的应用错误。
 func New(code Code, message string) *Error {
 	return &Error{Code: code, Message: message}
 }
 
+// Wrap 创建带底层原因的应用错误，便于上层统一响应且保留排查上下文。
 func Wrap(code Code, message string, cause error) *Error {
 	return &Error{Code: code, Message: message, cause: cause}
 }
 
+// Error 返回带错误码、业务消息和底层原因的可读错误文本。
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
@@ -45,6 +48,7 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s: %s: %v", e.Code, e.Message, e.cause)
 }
 
+// Unwrap 返回底层错误，支持 errors.Is 和 errors.As 继续匹配根因。
 func (e *Error) Unwrap() error {
 	if e == nil {
 		return nil
@@ -52,6 +56,7 @@ func (e *Error) Unwrap() error {
 	return e.cause
 }
 
+// From 将任意错误转换为应用错误，未知错误默认归类为系统内部错误。
 func From(err error) *Error {
 	if err == nil {
 		return nil
@@ -64,6 +69,7 @@ func From(err error) *Error {
 	return Wrap(CodeInternal, "系统内部错误", err)
 }
 
+// HTTPStatus 将应用错误码映射为 HTTP 状态码。
 func HTTPStatus(code Code) int {
 	switch code {
 	case CodeInvalidArg:
@@ -87,6 +93,7 @@ func HTTPStatus(code Code) int {
 	}
 }
 
+// WriteJSON 按统一错误结构把应用错误写入 HTTP 响应。
 func WriteJSON(w http.ResponseWriter, err error) {
 	appErr := From(err)
 	if appErr == nil {

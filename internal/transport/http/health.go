@@ -20,6 +20,7 @@ type HealthPayload struct {
 	Uptime    string `json:"uptime"`
 }
 
+// RegisterHealthRoutes 注册健康检查、存活检查和就绪检查路由。
 func RegisterHealthRoutes(router chi.Router, cfg config.Config, startedAt time.Time) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusOK, HealthPayload{

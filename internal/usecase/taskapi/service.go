@@ -100,6 +100,7 @@ type TaskPage struct {
 	Status   string        `json:"status,omitempty"`
 }
 
+// NewService 创建任务 API 用例服务。
 func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{
 		pool:    pool,
@@ -107,6 +108,7 @@ func NewService(pool *pgxpool.Pool) *Service {
 	}
 }
 
+// CreateTask 创建 Agent 任务，并在同一事务内写入初始状态、审计事件和 outbox 消息。
 func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (CreatedTask, error) {
 	goal, err := domaintask.NormalizeGoal(input.Goal)
 	if err != nil {
@@ -137,11 +139,13 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInternal, "序列化 budget_usage 失败", err)
 	}
 
+	// 任务、状态、事件和 outbox 必须原子提交，否则 worker 可能看到不完整任务或漏启动 workflow。
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeUnavailable, "创建任务事务失败", err)
 	}
 	defer func() {
+		// Commit 成功后 Rollback 会返回已提交错误，这里忽略即可；失败路径会自动回滚未提交写入。
 		_ = tx.Rollback(ctx)
 	}()
 
@@ -180,6 +184,7 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 	if err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInternal, "序列化任务事件输入失败", err)
 	}
+	// 事件元数据保留 request_id，后续 UI timeline 和服务日志可以按请求串联排查。
 	eventMetadata, err := json.Marshal(map[string]any{
 		"user_id":    input.UserID,
 		"request_id": input.RequestID,
@@ -209,6 +214,7 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 	if err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInternal, "序列化 outbox payload 失败", err)
 	}
+	// outbox 与任务同事务写入，保证创建成功的任务最终一定能被 worker 拉起。
 	if _, err := queries.CreateTaskOutboxMessage(ctx, db.CreateTaskOutboxMessageParams{
 		TenantID:      input.TenantID,
 		AggregateType: "agent_task",
@@ -232,6 +238,7 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 	}, nil
 }
 
+// GetTask 查询任务详情，并按租户和用户权限过滤访问。
 func (s *Service) GetTask(ctx context.Context, input GetTaskInput) (TaskDetail, error) {
 	task, err := s.queries.GetAgentTask(ctx, db.GetAgentTaskParams{
 		TenantID: input.TenantID,
@@ -254,10 +261,12 @@ func (s *Service) GetTask(ctx context.Context, input GetTaskInput) (TaskDetail, 
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return TaskDetail{}, mapPostgresReadError(err)
 	}
+	// 历史或异常任务可能暂时没有 state，详情仍返回任务主体，current_step 保持零值。
 
 	return taskDetailFromDB(task, currentStep), nil
 }
 
+// ListTasks 查询任务列表，普通用户仅看自己的任务，管理员和所有者可看租户内任务。
 func (s *Service) ListTasks(ctx context.Context, input ListTasksInput) (TaskPage, error) {
 	page, pageSize, err := normalizePagination(input.Page, input.PageSize)
 	if err != nil {
@@ -279,6 +288,7 @@ func (s *Service) ListTasks(ctx context.Context, input ListTasksInput) (TaskPage
 		status = parsed
 	}
 
+	// 多取一条用于判断是否还有下一页，避免额外执行 count 查询拖慢列表接口。
 	limit := int32(pageSize + 1)
 	offset := int32((page - 1) * pageSize)
 	canListTenant := authz.CanListTenantTasks(authn.User{TenantID: input.TenantID, UserID: input.UserID, Role: input.UserRole})
@@ -346,6 +356,7 @@ func (s *Service) ListTasks(ctx context.Context, input ListTasksInput) (TaskPage
 	}, nil
 }
 
+// taskDetailFromDB 将数据库任务记录转换为 API 详情响应。
 func taskDetailFromDB(task db.AgentTask, currentStep int32) TaskDetail {
 	return TaskDetail{
 		TaskID:           task.TaskID,
@@ -362,6 +373,7 @@ func taskDetailFromDB(task db.AgentTask, currentStep int32) TaskDetail {
 	}
 }
 
+// taskSummaryFromDB 将数据库任务记录转换为 API 列表摘要。
 func taskSummaryFromDB(task db.AgentTask) TaskSummary {
 	return TaskSummary{
 		TaskID:      task.TaskID,
@@ -375,6 +387,7 @@ func taskSummaryFromDB(task db.AgentTask) TaskSummary {
 	}
 }
 
+// normalizePagination 规范化分页参数，并限制 offset 在 PostgreSQL int4 范围内。
 func normalizePagination(page int, pageSize int) (int, int, error) {
 	if page == 0 {
 		page = 1
@@ -388,12 +401,14 @@ func normalizePagination(page int, pageSize int) (int, int, error) {
 	if pageSize < 1 || pageSize > maxPageSize {
 		return 0, 0, apperrors.New(apperrors.CodeInvalidArg, fmt.Sprintf("page_size 必须在 1 到 %d 之间", maxPageSize))
 	}
+	// sqlc 生成参数是 int32，提前拒绝超大 offset，避免整数截断导致错误分页。
 	if (page-1)*pageSize > 2147483647 {
 		return 0, 0, apperrors.New(apperrors.CodeInvalidArg, "分页 offset 超出支持范围")
 	}
 	return page, pageSize, nil
 }
 
+// mapPostgresReadError 将 PostgreSQL 读取错误转换为统一应用错误。
 func mapPostgresReadError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apperrors.New(apperrors.CodeNotFound, "任务不存在")
@@ -401,11 +416,13 @@ func mapPostgresReadError(err error) error {
 	return apperrors.Wrap(apperrors.CodeUnavailable, "数据库读取失败", err)
 }
 
+// mapPostgresWriteError 将 PostgreSQL 写入错误转换为统一应用错误。
 func mapPostgresWriteError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23503":
+			// 外键失败通常表示租户或用户不存在，不能暴露底层表结构细节。
 			return apperrors.New(apperrors.CodeForbidden, "用户不属于租户或租户不存在")
 		case "23505":
 			return apperrors.New(apperrors.CodeConflict, "任务资源已存在")
@@ -414,6 +431,7 @@ func mapPostgresWriteError(err error) error {
 	return apperrors.Wrap(apperrors.CodeUnavailable, "数据库写入失败", err)
 }
 
+// pgTime 将 pgx 时间类型转换为 UTC time.Time，空值返回零时间。
 func pgTime(value pgtype.Timestamptz) time.Time {
 	if !value.Valid {
 		return time.Time{}

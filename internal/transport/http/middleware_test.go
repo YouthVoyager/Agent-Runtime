@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestWithRequestIDUsesIncomingHeader 验证已有 request_id 会透传到上下文和响应头。
 func TestWithRequestIDUsesIncomingHeader(t *testing.T) {
 	var got string
 	handler := WithRequestID("X-Request-ID")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +28,7 @@ func TestWithRequestIDUsesIncomingHeader(t *testing.T) {
 	}
 }
 
+// TestWithRequestIDGeneratesMissingHeader 验证缺失 request_id 时会自动生成。
 func TestWithRequestIDGeneratesMissingHeader(t *testing.T) {
 	handler := WithRequestID("X-Request-ID")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if RequestIDFromContext(r.Context()) == "" {

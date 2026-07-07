@@ -19,6 +19,7 @@ import (
 
 type RegisterRoutes func(router chi.Router, cfg config.Config, logger *slog.Logger) (func(context.Context) error, error)
 
+// RunHTTPService 完成 HTTP 服务的配置加载、公共 middleware 注册、路由注册和生命周期管理。
 func RunHTTPService(serviceName string, defaultAddr string, register RegisterRoutes) error {
 	cfg, err := config.Load(serviceName, config.Defaults{HTTPAddr: defaultAddr})
 	if err != nil {
@@ -33,6 +34,7 @@ func RunHTTPService(serviceName string, defaultAddr string, register RegisterRou
 		httpserver.WithRequestID(cfg.RequestIDHeader),
 		httpserver.WithAccessLog(logger),
 	)
+	// 未匹配路由和方法不支持也走统一错误结构，避免框架默认纯文本响应泄漏到 API。
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteError(w, r, apperrors.New(apperrors.CodeNotFound, "接口不存在"))
 	})
@@ -64,6 +66,7 @@ func RunHTTPService(serviceName string, defaultAddr string, register RegisterRou
 
 	runErr := httpserver.Run(ctx, cfg, logger, router)
 	if cleanup != nil {
+		// 业务资源清理与 HTTP 关闭分离，确保数据库连接池等资源有独立超时时间。
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 		if err := cleanup(cleanupCtx); err != nil && runErr == nil {

@@ -12,6 +12,7 @@ import (
 	"agent-runtime/internal/config"
 )
 
+// TestRegisterHealthRoutesWithChi 验证健康检查路由可以通过 chi 正常注册和响应。
 func TestRegisterHealthRoutesWithChi(t *testing.T) {
 	router := chi.NewRouter()
 	RegisterHealthRoutes(router, config.Config{

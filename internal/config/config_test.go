@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// TestLoadUsesScopedEnv 验证服务级环境变量优先于全局默认值。
 func TestLoadUsesScopedEnv(t *testing.T) {
 	t.Setenv("APP_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.env"))
 	t.Setenv("API_SERVICE_HTTP_ADDR", ":19090")
@@ -29,6 +30,7 @@ func TestLoadUsesScopedEnv(t *testing.T) {
 	}
 }
 
+// TestLoadReadsEnvFileWithoutOverwritingExistingEnv 验证 env 文件不会覆盖已经存在的环境变量。
 func TestLoadReadsEnvFileWithoutOverwritingExistingEnv(t *testing.T) {
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, "local.env")
@@ -52,6 +54,7 @@ func TestLoadReadsEnvFileWithoutOverwritingExistingEnv(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsInvalidDuration 验证非法 duration 配置会被拒绝。
 func TestLoadRejectsInvalidDuration(t *testing.T) {
 	t.Setenv("APP_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.env"))
 	t.Setenv("READ_TIMEOUT", "invalid")

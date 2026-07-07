@@ -8,6 +8,7 @@ import (
 	"agent-runtime/internal/config"
 )
 
+// New 创建带服务名和环境字段的 JSON 结构化日志器。
 func New(cfg config.Config) *slog.Logger {
 	level := slog.LevelInfo
 	switch strings.ToLower(strings.TrimSpace(cfg.LogLevel)) {

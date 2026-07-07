@@ -15,6 +15,7 @@ import (
 	"agent-runtime/internal/usecase/taskapi"
 )
 
+// RegisterRoutes 注册 API Service 路由并初始化任务用例依赖。
 func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (func(context.Context) error, error) {
 	pool, err := postgres.NewPool(context.Background(), postgres.PoolConfig{
 		DatabaseURL: cfg.DatabaseURL,
@@ -28,12 +29,14 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 	registerTaskRoutes(router, taskService, cfg.JWTSecret, logger)
 
 	logger.Info("api-service 路由注册完成")
+	// 返回 cleanup 交给服务启动器在优雅关闭阶段释放连接池。
 	return func(context.Context) error {
 		pool.Close()
 		return nil
 	}, nil
 }
 
+// registerPublicRoutes 注册无需鉴权的 API Service 公共路由。
 func registerPublicRoutes(router chi.Router, cfg config.Config) {
 	router.Get("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/healthz", http.StatusTemporaryRedirect)
@@ -47,6 +50,7 @@ func registerPublicRoutes(router chi.Router, cfg config.Config) {
 	})
 }
 
+// registerTaskRoutes 注册任务 API，并为任务路由统一挂载 JWT 鉴权。
 func registerTaskRoutes(router chi.Router, service taskService, jwtSecret string, logger *slog.Logger) {
 	handler := newTaskHandler(service, logger)
 	jwtMiddleware := authn.JWTMiddleware(authn.JWTMiddlewareConfig{Secret: jwtSecret})

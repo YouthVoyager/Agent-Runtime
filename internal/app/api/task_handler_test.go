@@ -20,6 +20,7 @@ import (
 	apperrors "agent-runtime/pkg/errors"
 )
 
+// TestCreateTaskRoute 验证创建任务路由能解析 JWT、请求体并返回统一成功响应。
 func TestCreateTaskRoute(t *testing.T) {
 	now := time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC)
 	fake := &fakeTaskService{
@@ -63,6 +64,7 @@ func TestCreateTaskRoute(t *testing.T) {
 	}
 }
 
+// TestTaskRoutesRequireJWT 验证任务路由缺少 JWT 时会返回统一未授权错误。
 func TestTaskRoutesRequireJWT(t *testing.T) {
 	router := newTestTaskRouter(&fakeTaskService{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", nil)
@@ -82,6 +84,7 @@ func TestTaskRoutesRequireJWT(t *testing.T) {
 	}
 }
 
+// TestListTasksRoutePassesFiltersAndPagination 验证列表路由会透传过滤、分页和排序参数。
 func TestListTasksRoutePassesFiltersAndPagination(t *testing.T) {
 	now := time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC)
 	fake := &fakeTaskService{
@@ -121,6 +124,7 @@ func TestListTasksRoutePassesFiltersAndPagination(t *testing.T) {
 	}
 }
 
+// newTestTaskRouter 创建带 request_id 和任务路由的测试路由器。
 func newTestTaskRouter(service taskService) http.Handler {
 	router := chi.NewRouter()
 	router.Use(httpserver.WithRequestID("X-Request-ID"))
@@ -134,6 +138,7 @@ type fakeTaskService struct {
 	listTasks  func(context.Context, taskapi.ListTasksInput) (taskapi.TaskPage, error)
 }
 
+// CreateTask 调用测试注入的创建任务逻辑。
 func (s *fakeTaskService) CreateTask(ctx context.Context, input taskapi.CreateTaskInput) (taskapi.CreatedTask, error) {
 	if s.createTask == nil {
 		return taskapi.CreatedTask{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 CreateTask")
@@ -141,6 +146,7 @@ func (s *fakeTaskService) CreateTask(ctx context.Context, input taskapi.CreateTa
 	return s.createTask(ctx, input)
 }
 
+// GetTask 调用测试注入的任务详情逻辑。
 func (s *fakeTaskService) GetTask(ctx context.Context, input taskapi.GetTaskInput) (taskapi.TaskDetail, error) {
 	if s.getTask == nil {
 		return taskapi.TaskDetail{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 GetTask")
@@ -148,6 +154,7 @@ func (s *fakeTaskService) GetTask(ctx context.Context, input taskapi.GetTaskInpu
 	return s.getTask(ctx, input)
 }
 
+// ListTasks 调用测试注入的任务列表逻辑。
 func (s *fakeTaskService) ListTasks(ctx context.Context, input taskapi.ListTasksInput) (taskapi.TaskPage, error) {
 	if s.listTasks == nil {
 		return taskapi.TaskPage{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 ListTasks")
@@ -155,6 +162,7 @@ func (s *fakeTaskService) ListTasks(ctx context.Context, input taskapi.ListTasks
 	return s.listTasks(ctx, input)
 }
 
+// signAPITestJWT 生成 API handler 测试用 HS256 JWT。
 func signAPITestJWT(t *testing.T, secret string, claims map[string]any) string {
 	t.Helper()
 	headerJSON, err := json.Marshal(map[string]any{"alg": "HS256", "typ": "JWT"})

@@ -11,6 +11,7 @@ import (
 	httpserver "agent-runtime/internal/transport/http"
 )
 
+// RegisterRoutes 注册 LLM Gateway 当前阶段的状态路由。
 func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (func(context.Context) error, error) {
 	router.Get("/llm/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteJSON(w, http.StatusOK, map[string]any{

@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// TestParseAndVerifyJWT 验证合法 HS256 JWT 能解析出身份声明。
 func TestParseAndVerifyJWT(t *testing.T) {
 	now := time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC)
 	token := signTestJWT(t, "secret", map[string]any{
@@ -29,6 +30,7 @@ func TestParseAndVerifyJWT(t *testing.T) {
 	}
 }
 
+// TestParseAndVerifyJWTRejectsExpiredToken 验证过期 JWT 会被拒绝。
 func TestParseAndVerifyJWTRejectsExpiredToken(t *testing.T) {
 	now := time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC)
 	token := signTestJWT(t, "secret", map[string]any{
@@ -42,6 +44,7 @@ func TestParseAndVerifyJWTRejectsExpiredToken(t *testing.T) {
 	}
 }
 
+// TestJWTMiddlewareWritesUserAndTenantContext 验证 JWT middleware 会写入用户和租户上下文。
 func TestJWTMiddlewareWritesUserAndTenantContext(t *testing.T) {
 	now := time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC)
 	token := signTestJWT(t, "secret", map[string]any{
@@ -78,6 +81,7 @@ func TestJWTMiddlewareWritesUserAndTenantContext(t *testing.T) {
 	}
 }
 
+// signTestJWT 生成测试用 HS256 JWT。
 func signTestJWT(t *testing.T, secret string, claims map[string]any) string {
 	t.Helper()
 	headerJSON, err := json.Marshal(map[string]any{"alg": "HS256", "typ": "JWT"})
