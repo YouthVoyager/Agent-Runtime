@@ -94,8 +94,8 @@ make migrate-down
 迁移文件约定：
 
 ```text
-migrations/000001_xxx.up.sql
-migrations/000001_xxx.down.sql
+db/migrations/000001_xxx.up.sql
+db/migrations/000001_xxx.down.sql
 ```
 
 脚本会维护 `schema_migrations` 表，用于记录已经执行过的版本。
@@ -128,7 +128,7 @@ curl http://localhost:8083/healthz
 先确认 PostgreSQL 容器已启动：
 
 ```bash
-docker compose ps postgres
+docker compose -f deploy/docker-compose.yml ps postgres
 ```
 
 然后再执行：

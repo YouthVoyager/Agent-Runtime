@@ -35,21 +35,22 @@ cmd/
   tool-gateway/main.go
   llm-gateway/main.go
 internal/
-  apperrors/
-  bootstrap/
+  app/
   config/
-  httpserver/
-  logging/
+  transport/http/
+  observability/logging/
+pkg/
+  errors/
   version/
 ```
 
-`cmd/*/main.go` 只负责声明服务名、默认端口和服务专属路由。公共启动逻辑放在 `internal/bootstrap`，避免四个服务重复写信号处理、日志、中间件和 HTTP server。
+`cmd/*/main.go` 只负责声明服务名、默认端口并引用服务专属路由。公共启动逻辑放在 `internal/app`，避免四个服务重复写信号处理、日志、中间件和 HTTP server。
 
 HTTP 路由框架使用 `net/http + chi`：
 
-1. `internal/bootstrap.RunHTTPService` 创建 `chi.NewRouter()`，作为所有服务共享的 HTTP handler。
+1. `internal/app.RunHTTPService` 创建 `chi.NewRouter()`，作为所有服务共享的 HTTP handler。
 2. `RegisterRoutes` 类型接收 `chi.Router`，各服务只负责注册自身业务端点。
-3. 公共健康检查由 `internal/httpserver.RegisterHealthRoutes` 注册到同一个 chi router。
+3. 公共健康检查由 `internal/transport/http.RegisterHealthRoutes` 注册到同一个 chi router。
 4. request_id、access log、recovery 通过 `router.Use` 挂载，确保所有 chi 路由都经过统一中间件。
 5. `router.NotFound` 和 `router.MethodNotAllowed` 返回统一错误码 JSON，避免 chi 默认纯文本响应破坏 API 格式。
 
@@ -82,7 +83,7 @@ HTTP 路由框架使用 `net/http + chi`：
 
 ## 5. 结构化日志
 
-日志入口是 `internal/logging.New`，基于 Go 标准库 `log/slog` 的 JSON handler。
+日志入口是 `internal/observability/logging.New`，基于 Go 标准库 `log/slog` 的 JSON handler。
 
 每条日志默认带有：
 
@@ -106,7 +107,7 @@ remote_addr
 
 ## 6. 统一错误码
 
-错误码包位于 `internal/apperrors`。
+错误码包位于 `pkg/errors`。
 
 当前内置错误码：
 
@@ -135,7 +136,7 @@ remote_addr
 
 ## 7. Request ID Middleware
 
-`internal/httpserver.WithRequestID` 负责处理请求 ID。
+`internal/transport/http.WithRequestID` 负责处理请求 ID。
 
 规则：
 
@@ -188,7 +189,7 @@ remote_addr
 
 ## 10. Docker 本地环境
 
-`docker-compose.yml` 包含应用服务和基础设施。
+`deploy/docker-compose.yml` 包含应用服务和基础设施。
 
 应用服务：
 
@@ -260,8 +261,8 @@ make migrate-up
 
 第 2 周可以直接在当前骨架上继续实现：
 
-1. `migrations/` 中新增核心表。
-2. `internal/repository` 中接入 `pgx` 和 `sqlc`。
+1. `db/migrations/` 中新增核心表。
+2. `internal/infra/postgres/repository` 中接入 `pgx` 和 `sqlc`。
 3. `api-service` 中实现任务创建、查询和 timeline API。
 4. `runtime-worker` 中实现可恢复执行主循环。
 5. `tool-gateway` 中实现工具幂等、风险判断和审批创建。

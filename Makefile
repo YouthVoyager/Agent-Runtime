@@ -2,6 +2,7 @@ SHELL := /usr/bin/env bash
 GO ?= go
 SERVICES := api-service runtime-worker tool-gateway llm-gateway
 SQLC_VERSION ?= latest
+COMPOSE_FILE ?= deploy/docker-compose.yml
 
 .PHONY: fmt lint test build clean sqlc-generate run-api run-worker run-tool run-llm docker-up docker-down docker-ps migrate-up migrate-down migrate-status health verify-services
 
@@ -39,13 +40,13 @@ run-llm:
 	$(GO) run ./cmd/llm-gateway
 
 docker-up:
-	docker compose up -d --build
+	docker compose -f $(COMPOSE_FILE) up -d --build
 
 docker-down:
-	docker compose down
+	docker compose -f $(COMPOSE_FILE) down
 
 docker-ps:
-	docker compose ps
+	docker compose -f $(COMPOSE_FILE) ps
 
 migrate-up:
 	./scripts/migrate.sh up

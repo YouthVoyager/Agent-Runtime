@@ -20,15 +20,27 @@ cmd/
   tool-gateway/      工具调用网关入口
   llm-gateway/       LLM 网关入口
 internal/
-  apperrors/         统一错误码
-  bootstrap/         服务启动编排
+  app/               服务启动编排和服务专属路由
+  domain/            领域模型边界
+  usecase/           应用用例边界
+  infra/             PostgreSQL、Redis、Temporal、NATS、对象存储和外部客户端
+  transport/         HTTP、gRPC、SSE 传输层
+  observability/     logging、metrics、tracing 可观测性能力
+  security/          authn、authz、tenant 安全上下文
   config/            配置加载
-  httpserver/        HTTP server、middleware、health
-  logging/           结构化日志
+pkg/
+  errors/            统一错误码
+  ids/               ID 生成工具预留
+  clock/             时间工具预留
+  jsonx/             JSON 工具预留
   version/           构建版本信息
+db/
+  migrations/        数据库迁移 SQL
+  queries/           sqlc 查询定义
+api/                 OpenAPI 和 proto
+deploy/              Docker Compose、Helm、Kubernetes 部署配置
 config/              本地配置样例
 docs/                项目文档
-migrations/          数据库迁移 SQL
 scripts/             本地开发脚本
 ```
 

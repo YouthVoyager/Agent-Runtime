@@ -1,6 +1,6 @@
 # Agent Runtime
 
-Agent Runtime 是一个生产级 Agent 长任务执行平台的 Go monorepo。当前完成第 1 周工程骨架：四个基于 `net/http + chi` 的基础服务、统一配置、结构化日志、错误码、request_id middleware、health check、graceful shutdown、Docker 本地环境、migration 脚本、Makefile 和开发规范文档。
+Agent Runtime 是一个生产级 Agent 长任务执行平台的 Go monorepo。当前已按设计方案完成目录分层：四个服务入口保留在 `cmd/`，服务路由下沉到 `internal/app/`，传输层、可观测性、基础设施和公共工具分别归入对应目录。
 
 ## 服务边界
 
@@ -59,7 +59,7 @@ curl http://localhost:8083/healthz
 
 ## 本地基础设施
 
-`docker-compose.yml` 会启动：
+`deploy/docker-compose.yml` 会启动：
 
 | 组件 | 端口 | 用途 |
 | --- | ---: | --- |
@@ -76,4 +76,5 @@ curl http://localhost:8083/healthz
 | --- | --- |
 | `docs/development-standards.md` | 代码规范、分支规范、commit 规范 |
 | `docs/local-development.md` | 本地启动、迁移、调试、排障说明 |
+| `docs/directory-refactor-technical-document.md` | 本次目录重构技术说明 |
 | `docs/week-1-technical-document.md` | 第一周技术实现说明 |

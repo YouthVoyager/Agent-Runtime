@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
-    -ldflags "-s -w -X agent-runtime/internal/version.Version=${VERSION} -X agent-runtime/internal/version.Commit=${COMMIT} -X agent-runtime/internal/version.BuildTime=${BUILD_TIME}" \
+    -ldflags "-s -w -X agent-runtime/pkg/version.Version=${VERSION} -X agent-runtime/pkg/version.Commit=${COMMIT} -X agent-runtime/pkg/version.BuildTime=${BUILD_TIME}" \
     -o /out/service ./cmd/${SERVICE}
 
 FROM alpine:3.22

@@ -20,14 +20,14 @@
 
 | 文件或目录 | 作用 |
 | --- | --- |
-| `migrations/000002_week2_core_models.up.sql` | 创建第 2 周全部核心表、enum、索引和约束 |
-| `migrations/000002_week2_core_models.down.sql` | 回滚第 2 周核心表和 enum |
+| `db/migrations/000002_week2_core_models.up.sql` | 创建第 2 周全部核心表、enum、索引和约束 |
+| `db/migrations/000002_week2_core_models.down.sql` | 回滚第 2 周核心表和 enum |
 | `sqlc.yaml` | sqlc 生成配置 |
 | `db/queries/*.sql` | 类型安全 SQL 查询定义 |
-| `internal/db/*.go` | sqlc 生成的 Go 类型和查询代码 |
+| `internal/infra/postgres/db/*.go` | sqlc 生成的 Go 类型和查询代码 |
 | `internal/infra/postgres/postgres.go` | pgxpool 连接池封装 |
-| `internal/repository/*.go` | Repository 基础层 |
-| `internal/repository/repository_test.go` | Repository 单元测试 |
+| `internal/infra/postgres/repository/*.go` | Repository 基础层 |
+| `internal/infra/postgres/repository/repository_test.go` | Repository 单元测试 |
 
 ## 3. 数据模型总览
 
@@ -80,7 +80,7 @@ erDiagram
 | `artifact_status` | `AVAILABLE`、`DELETED` | artifact 可见状态 |
 | `tool_policy_effect` | `ALLOW`、`DENY`、`REQUIRE_APPROVAL` | 租户工具策略结果 |
 
-sqlc 在 `internal/db/models.go` 中生成了这些枚举的 Go 类型，例如 `db.TaskStatus`、`db.ToolCallStatus`、`db.ApprovalStatus`。
+sqlc 在 `internal/infra/postgres/db/models.go` 中生成了这些枚举的 Go 类型，例如 `db.TaskStatus`、`db.ToolCallStatus`、`db.ApprovalStatus`。
 
 ## 5. 多租户隔离设计
 
@@ -350,7 +350,7 @@ where tenant_id = $tenant_id
 
 ## 7. sqlc 接入说明
 
-本项目使用 `sqlc.yaml` 生成 `internal/db`：
+本项目使用 `sqlc.yaml` 生成 `internal/infra/postgres/db`：
 
 ```yaml
 sql_package: "pgx/v5"
@@ -413,7 +413,7 @@ taskRepo := repository.NewTaskRepository(queries)
 
 ## 9. Repository 层实现说明
 
-Repository 位于 `internal/repository`。它不拼 SQL，不实现业务流程，只负责：
+Repository 位于 `internal/infra/postgres/repository`。它不拼 SQL，不实现业务流程，只负责：
 
 1. 调用 sqlc 生成的类型安全查询。
 2. 统一错误语义。
@@ -441,7 +441,7 @@ Repository 位于 `internal/repository`。它不拼 SQL，不实现业务流程�
 
 ## 10. 测试说明
 
-Repository 单元测试在 `internal/repository/repository_test.go`。
+Repository 单元测试在 `internal/infra/postgres/repository/repository_test.go`。
 
 覆盖内容：
 

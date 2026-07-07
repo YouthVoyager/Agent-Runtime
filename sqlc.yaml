@@ -2,13 +2,13 @@ version: "2"
 sql:
   - engine: "postgresql"
     schema:
-      - "migrations/000002_week2_core_models.up.sql"
+      - "db/migrations/000002_week2_core_models.up.sql"
     queries:
       - "db/queries"
     gen:
       go:
         package: "db"
-        out: "internal/db"
+        out: "internal/infra/postgres/db"
         sql_package: "pgx/v5"
         emit_db_tags: true
         emit_json_tags: true

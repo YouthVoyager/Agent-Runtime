@@ -1,0 +1,36 @@
+openapi: 3.1.0
+info:
+  title: Agent Runtime API
+  version: 0.1.0
+  description: Agent Runtime 当前服务骨架的 OpenAPI 占位文档，后续任务 API 按设计方案补全。
+paths:
+  /healthz:
+    get:
+      summary: 健康检查
+      responses:
+        "200":
+          description: 服务可用
+  /livez:
+    get:
+      summary: 存活检查
+      responses:
+        "200":
+          description: 进程存活
+  /readyz:
+    get:
+      summary: 就绪检查
+      responses:
+        "200":
+          description: 服务就绪
+  /api/v1/service-info:
+    get:
+      summary: API 服务信息
+      responses:
+        "200":
+          description: 返回当前服务名称和职责
+  /api/v1/tasks:
+    post:
+      summary: 创建 Agent 任务
+      responses:
+        "501":
+          description: 第 3 周实现任务创建闭环

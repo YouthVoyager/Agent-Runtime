@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-docker compose up -d --build
+COMPOSE_FILE="${COMPOSE_FILE:-deploy/docker-compose.yml}"
+
+docker compose -f "${COMPOSE_FILE}" up -d --build
