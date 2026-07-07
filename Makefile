@@ -1,8 +1,9 @@
 SHELL := /usr/bin/env bash
 GO ?= go
 SERVICES := api-service runtime-worker tool-gateway llm-gateway
+SQLC_VERSION ?= latest
 
-.PHONY: fmt lint test build clean run-api run-worker run-tool run-llm docker-up docker-down docker-ps migrate-up migrate-down migrate-status health verify-services
+.PHONY: fmt lint test build clean sqlc-generate run-api run-worker run-tool run-llm docker-up docker-down docker-ps migrate-up migrate-down migrate-status health verify-services
 
 fmt:
 	gofmt -w $(shell find . -name '*.go' -not -path './.git/*')
@@ -12,6 +13,9 @@ lint:
 
 test:
 	$(GO) test ./...
+
+sqlc-generate:
+	$(GO) run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate
 
 build:
 	mkdir -p bin

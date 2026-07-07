@@ -1,0 +1,79 @@
+-- name: CreateAgentTask :one
+insert into agent_tasks (
+    task_id,
+    tenant_id,
+    user_id,
+    goal,
+    status,
+    budget,
+    budget_usage
+) values (
+    sqlc.arg(task_id),
+    sqlc.arg(tenant_id),
+    sqlc.arg(user_id),
+    sqlc.arg(goal),
+    sqlc.arg(status),
+    sqlc.arg(budget),
+    sqlc.arg(budget_usage)
+)
+returning *;
+
+-- name: GetAgentTask :one
+select *
+from agent_tasks
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+limit 1;
+
+-- name: ListAgentTasksByTenant :many
+select *
+from agent_tasks
+where tenant_id = sqlc.arg(tenant_id)
+order by created_at desc, task_id desc
+limit sqlc.arg(limit_rows)
+offset sqlc.arg(offset_rows);
+
+-- name: ListAgentTasksByUserAndStatus :many
+select *
+from agent_tasks
+where tenant_id = sqlc.arg(tenant_id)
+  and user_id = sqlc.arg(user_id)
+  and status = sqlc.arg(status)
+order by created_at desc, task_id desc
+limit sqlc.arg(limit_rows)
+offset sqlc.arg(offset_rows);
+
+-- name: UpdateAgentTaskStatus :one
+update agent_tasks
+set status = sqlc.arg(status),
+    updated_at = now()
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+returning *;
+
+-- name: UpdateAgentTaskWorkflow :one
+update agent_tasks
+set workflow_id = sqlc.narg(workflow_id),
+    trace_id = sqlc.narg(trace_id),
+    updated_at = now()
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+returning *;
+
+-- name: UpdateAgentTaskBudgetUsage :one
+update agent_tasks
+set budget_usage = sqlc.arg(budget_usage),
+    updated_at = now()
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+returning *;
+
+-- name: MarkAgentTaskFailed :one
+update agent_tasks
+set status = 'FAILED',
+    last_error_code = sqlc.arg(last_error_code),
+    last_error_message = sqlc.arg(last_error_message),
+    updated_at = now()
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+returning *;
