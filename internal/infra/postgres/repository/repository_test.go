@@ -173,10 +173,11 @@ func (s taskQueriesStub) MarkAgentTaskFailed(ctx context.Context, arg db.MarkAge
 }
 
 type eventQueriesStub struct {
-	createAgentEvent func(context.Context, db.CreateAgentEventParams) (db.AgentEvent, error)
-	getAgentEvent    func(context.Context, db.GetAgentEventParams) (db.AgentEvent, error)
-	listEventsByTask func(context.Context, db.ListAgentEventsByTaskParams) ([]db.AgentEvent, error)
-	listEventsByType func(context.Context, db.ListAgentEventsByTypeParams) ([]db.AgentEvent, error)
+	createAgentEvent        func(context.Context, db.CreateAgentEventParams) (db.AgentEvent, error)
+	getAgentEvent           func(context.Context, db.GetAgentEventParams) (db.AgentEvent, error)
+	listEventsByTask        func(context.Context, db.ListAgentEventsByTaskParams) ([]db.AgentEvent, error)
+	listEventsByTaskAndType func(context.Context, db.ListAgentEventsByTaskAndTypeParams) ([]db.AgentEvent, error)
+	listEventsByType        func(context.Context, db.ListAgentEventsByTypeParams) ([]db.AgentEvent, error)
 }
 
 // CreateAgentEvent 调用测试注入的事件创建函数。
@@ -192,6 +193,11 @@ func (s eventQueriesStub) GetAgentEvent(ctx context.Context, arg db.GetAgentEven
 // ListAgentEventsByTask 调用测试注入的任务事件列表查询函数。
 func (s eventQueriesStub) ListAgentEventsByTask(ctx context.Context, arg db.ListAgentEventsByTaskParams) ([]db.AgentEvent, error) {
 	return s.listEventsByTask(ctx, arg)
+}
+
+// ListAgentEventsByTaskAndType 调用测试注入的任务类型事件列表查询函数。
+func (s eventQueriesStub) ListAgentEventsByTaskAndType(ctx context.Context, arg db.ListAgentEventsByTaskAndTypeParams) ([]db.AgentEvent, error) {
+	return s.listEventsByTaskAndType(ctx, arg)
 }
 
 // ListAgentEventsByType 调用测试注入的事件类型列表查询函数。

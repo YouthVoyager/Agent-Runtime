@@ -10,8 +10,10 @@ import (
 
 	"agent-runtime/internal/config"
 	"agent-runtime/internal/infra/postgres"
+	redisinfra "agent-runtime/internal/infra/redis"
 	"agent-runtime/internal/security/authn"
 	httpserver "agent-runtime/internal/transport/http"
+	"agent-runtime/internal/usecase/eventapi"
 	"agent-runtime/internal/usecase/taskapi"
 )
 
@@ -24,13 +26,31 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 		return nil, fmt.Errorf("初始化 API PostgreSQL 连接池失败: %w", err)
 	}
 
-	taskService := taskapi.NewService(pool)
+	eventHub := eventapi.NewHub(eventapi.DefaultHubBuffer)
+	eventBus := redisinfra.NewEventBus(cfg.RedisAddr, logger)
+	eventService := eventapi.NewService(pool, eventHub, eventBus, logger)
+	taskService := taskapi.NewServiceWithEventNotifier(pool, eventService)
+
+	eventBusCtx, cancelEventBus := context.WithCancel(context.Background())
+	if eventBus != nil {
+		go func() {
+			if err := eventBus.Subscribe(eventBusCtx, eventService.PublishLocal); err != nil {
+				logger.Warn("Redis AgentEvent 订阅退出", "error", err)
+			}
+		}()
+	}
+
 	registerPublicRoutes(router, cfg)
-	registerTaskRoutes(router, taskService, cfg.JWTSecret, logger)
+	registerTaskRoutes(router, taskService, eventService, cfg.JWTSecret, logger)
+	registerWebRoutes(router, cfg, logger)
 
 	logger.Info("api-service 路由注册完成")
 	// 返回 cleanup 交给服务启动器在优雅关闭阶段释放连接池。
 	return func(context.Context) error {
+		cancelEventBus()
+		if eventBus != nil {
+			_ = eventBus.Close()
+		}
 		pool.Close()
 		return nil
 	}, nil
@@ -51,8 +71,9 @@ func registerPublicRoutes(router chi.Router, cfg config.Config) {
 }
 
 // registerTaskRoutes 注册任务 API，并为任务路由统一挂载 JWT 鉴权。
-func registerTaskRoutes(router chi.Router, service taskService, jwtSecret string, logger *slog.Logger) {
+func registerTaskRoutes(router chi.Router, service taskService, events eventService, jwtSecret string, logger *slog.Logger) {
 	handler := newTaskHandler(service, logger)
+	eventHandler := newEventHandler(events, logger)
 	jwtMiddleware := authn.JWTMiddleware(authn.JWTMiddlewareConfig{Secret: jwtSecret})
 
 	router.Group(func(r chi.Router) {
@@ -60,5 +81,7 @@ func registerTaskRoutes(router chi.Router, service taskService, jwtSecret string
 		r.Post("/api/v1/tasks", handler.createTask)
 		r.Get("/api/v1/tasks", handler.listTasks)
 		r.Get("/api/v1/tasks/{task_id}", handler.getTask)
+		r.Get("/api/v1/tasks/{task_id}/events", eventHandler.listTaskEvents)
+		r.Get("/api/v1/tasks/{task_id}/events/stream", eventHandler.streamTaskEvents)
 	})
 }

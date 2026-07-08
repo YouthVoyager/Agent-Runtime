@@ -37,6 +37,16 @@ where tenant_id = sqlc.arg(tenant_id)
 order by event_id asc
 limit sqlc.arg(limit_rows);
 
+-- name: ListAgentEventsByTaskAndType :many
+select *
+from agent_events
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+  and type = sqlc.arg(type)
+  and event_id > sqlc.arg(after_event_id)
+order by event_id asc
+limit sqlc.arg(limit_rows);
+
 -- name: ListAgentEventsByType :many
 select *
 from agent_events

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Agent Runtime API
-  version: 0.3.0
-  description: Agent Runtime 第 3 周 Task API 第一版，覆盖任务创建、任务详情、任务列表、基础 JWT 鉴权和 tenant 隔离。
+  version: 0.4.0
+  description: Agent Runtime 第 4 周 API，覆盖任务创建查询、AgentEvent timeline 查询、SSE 实时推送、基础 JWT 鉴权和 tenant 隔离。
 servers:
   - url: http://localhost:8080
     description: 本地 API Service
@@ -143,6 +143,99 @@ paths:
           $ref: "#/components/responses/NotFound"
         "503":
           $ref: "#/components/responses/Unavailable"
+  /api/v1/tasks/{task_id}/events:
+    get:
+      summary: 查询任务 timeline
+      description: 按 event_id 升序读取任务事件。支持 after_event_id 游标、limit 和 type 过滤，查询始终携带 tenant_id 并复用任务读取权限。
+      operationId: listTaskEvents
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+        - name: after_event_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgentEventType"
+      responses:
+        "200":
+          description: 任务事件列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTaskEventsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/v1/tasks/{task_id}/events/stream:
+    get:
+      summary: 订阅任务事件 SSE
+      description: 连接建立后先按 Last-Event-ID 补发历史事件，再订阅实时事件。服务端写入 id、event 和 data 字段，事件名固定为 agent_event。
+      operationId: streamTaskEvents
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: last_event_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: SSE 事件流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: "id: 12\nevent: agent_event\ndata: {\"event_id\":12,\"type\":\"STEP_COMPLETED\",\"task_id\":\"task_01JZK9X2R6Z8M9\"}\n\n"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
 components:
   securitySchemes:
     bearerAuth:
@@ -275,6 +368,79 @@ components:
         - CANCELED
         - SUCCEEDED
         - FAILED
+    AgentEventType:
+      type: string
+      enum:
+        - TASK_CREATED
+        - TASK_STARTED
+        - TASK_COMPLETED
+        - TASK_FAILED
+        - TASK_CANCELLED
+        - TASK_RESUMED
+        - STEP_STARTED
+        - STEP_COMPLETED
+        - STEP_FAILED
+        - LLM_CALL_STARTED
+        - LLM_CALL_COMPLETED
+        - TOOL_CALL_STARTED
+        - TOOL_CALL_COMPLETED
+        - TOOL_APPROVAL_REQUIRED
+    AgentEvent:
+      type: object
+      required:
+        - event_id
+        - task_id
+        - type
+        - input
+        - output
+        - metadata
+        - created_at
+      properties:
+        event_id:
+          type: integer
+        task_id:
+          type: string
+        type:
+          $ref: "#/components/schemas/AgentEventType"
+        input:
+          type:
+            - object
+            - array
+            - string
+            - number
+            - boolean
+            - "null"
+        output:
+          type:
+            - object
+            - array
+            - string
+            - number
+            - boolean
+            - "null"
+        metadata:
+          type: object
+          additionalProperties: true
+          properties:
+            user_id:
+              type: string
+            request_id:
+              type: string
+            source:
+              type: string
+            step_id:
+              type: string
+            workflow_id:
+              type: string
+            attempt:
+              type: integer
+        trace_id:
+          type: string
+        span_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
     CreatedTask:
       type: object
       required:
@@ -400,6 +566,26 @@ components:
                 - created_at_desc
             status:
               $ref: "#/components/schemas/TaskStatus"
+    ListTaskEventsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - items
+            - next_after_event_id
+            - has_more
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/AgentEvent"
+            next_after_event_id:
+              type: integer
+            has_more:
+              type: boolean
     ErrorResponse:
       type: object
       required:

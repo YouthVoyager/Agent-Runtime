@@ -25,6 +25,7 @@ type Config struct {
 	ShutdownTimeout   time.Duration
 	DatabaseURL       string
 	RedisAddr         string
+	WebStaticDir      string
 	TemporalAddress   string
 	MinIOEndpoint     string
 	JaegerEndpoint    string
@@ -86,6 +87,7 @@ func Load(serviceName string, defaults Defaults) (Config, error) {
 		ShutdownTimeout:   shutdownTimeout,
 		DatabaseURL:       env("DATABASE_URL", "postgres://agent_runtime:agent_runtime@localhost:5432/agent_runtime?sslmode=disable"),
 		RedisAddr:         env("REDIS_ADDR", "localhost:6379"),
+		WebStaticDir:      scopedEnv(prefix, "WEB_STATIC_DIR", "web-ui/dist"),
 		TemporalAddress:   env("TEMPORAL_ADDRESS", "localhost:7233"),
 		MinIOEndpoint:     env("MINIO_ENDPOINT", "localhost:9000"),
 		JaegerEndpoint:    env("JAEGER_ENDPOINT", "http://localhost:14268/api/traces"),

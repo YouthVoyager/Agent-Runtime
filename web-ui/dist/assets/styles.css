@@ -1,0 +1,407 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #18202a;
+  background: #eef2f5;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  letter-spacing: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+}
+
+button,
+textarea,
+input {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  padding: 24px;
+  color: #f8fafc;
+  background: #14213d;
+}
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-row svg,
+.brand-row .icon {
+  flex: 0 0 auto;
+  color: #39b9a8;
+}
+
+.brand-row h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.brand-row span {
+  display: block;
+  margin-top: 3px;
+  color: #b8c4d8;
+  font-size: 13px;
+}
+
+.control-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.control-panel label {
+  display: grid;
+  gap: 7px;
+}
+
+.control-panel label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #dbe7f3;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.control-panel textarea,
+.control-panel input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #38516f;
+  border-radius: 8px;
+  padding: 10px 11px;
+  color: #f8fafc;
+  background: #0f1a2f;
+  outline: none;
+  resize: vertical;
+}
+
+.control-panel textarea:focus,
+.control-panel input:focus {
+  border-color: #39b9a8;
+  box-shadow: 0 0 0 3px rgba(57, 185, 168, 0.18);
+}
+
+.control-panel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  color: #0e1b2e;
+  background: #f6c453;
+  font-weight: 750;
+}
+
+.control-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.timeline-surface {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 24px;
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #d7dde5;
+}
+
+.timeline-header p {
+  margin: 0 0 4px;
+  color: #65758b;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.timeline-header h2 {
+  max-width: min(68vw, 880px);
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 7px;
+  border: 1px solid #c8d1dc;
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: #475569;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.connection.connected {
+  border-color: #8bd2bc;
+  color: #13795b;
+  background: #eefbf5;
+}
+
+.connection.reconnecting,
+.connection.connecting {
+  border-color: #e2bc62;
+  color: #896112;
+  background: #fff7df;
+}
+
+.error-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  border-left: 4px solid #d94a4a;
+  padding: 10px 12px;
+  color: #7f1d1d;
+  background: #fff1f1;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 0;
+  width: 100%;
+  max-width: 1060px;
+  padding-top: 18px;
+}
+
+.empty-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 70px;
+  color: #64748b;
+  font-weight: 650;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 14px;
+  position: relative;
+  min-width: 0;
+  padding-bottom: 18px;
+}
+
+.timeline-item:not(:last-child)::before {
+  position: absolute;
+  top: 28px;
+  bottom: 0;
+  left: 17px;
+  width: 2px;
+  background: #d4dce6;
+  content: "";
+}
+
+.event-marker {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #475569;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #d0d8e2;
+}
+
+.event-marker.blue {
+  color: #1d4ed8;
+  background: #e8f1ff;
+}
+
+.event-marker.amber {
+  color: #a15c07;
+  background: #fff1d6;
+}
+
+.event-marker.green {
+  color: #13795b;
+  background: #e6f7ef;
+}
+
+.event-marker.red {
+  color: #b42318;
+  background: #ffe8e8;
+}
+
+.event-body {
+  min-width: 0;
+  border: 1px solid #d7dde5;
+  border-radius: 8px;
+  padding: 13px 14px;
+  background: #ffffff;
+}
+
+.event-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.event-title-row strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #18202a;
+  font-size: 15px;
+}
+
+.event-title-row code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  padding: 3px 6px;
+  color: #475569;
+  background: #eef2f5;
+  font-size: 12px;
+}
+
+.event-title-row time {
+  flex: 0 0 auto;
+  color: #65758b;
+  font-size: 13px;
+}
+
+.event-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.event-fields span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border: 1px solid #d7dde5;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #475569;
+  background: #f8fafc;
+  font-size: 12px;
+}
+
+details {
+  margin-top: 10px;
+}
+
+summary {
+  width: fit-content;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+pre {
+  max-height: 260px;
+  margin: 10px 0 0;
+  overflow: auto;
+  border-radius: 8px;
+  padding: 12px;
+  color: #e5eef9;
+  background: #0f172a;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.spin {
+  display: inline-block;
+  animation: spin 0.9s linear infinite;
+}
+
+.icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1em;
+  height: 1em;
+  font-weight: 800;
+  line-height: 1;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 820px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar,
+  .timeline-surface {
+    padding: 18px;
+  }
+
+  .timeline-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .timeline-header h2 {
+    max-width: 100%;
+    font-size: 20px;
+  }
+
+  .timeline-item {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .event-marker {
+    width: 30px;
+    height: 30px;
+  }
+
+  .timeline-item:not(:last-child)::before {
+    left: 14px;
+  }
+
+  .event-title-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

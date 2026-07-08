@@ -10,6 +10,7 @@ type EventQueries interface {
 	CreateAgentEvent(ctx context.Context, arg db.CreateAgentEventParams) (db.AgentEvent, error)
 	GetAgentEvent(ctx context.Context, arg db.GetAgentEventParams) (db.AgentEvent, error)
 	ListAgentEventsByTask(ctx context.Context, arg db.ListAgentEventsByTaskParams) ([]db.AgentEvent, error)
+	ListAgentEventsByTaskAndType(ctx context.Context, arg db.ListAgentEventsByTaskAndTypeParams) ([]db.AgentEvent, error)
 	ListAgentEventsByType(ctx context.Context, arg db.ListAgentEventsByTypeParams) ([]db.AgentEvent, error)
 }
 
@@ -36,6 +37,11 @@ func (r *EventRepository) Get(ctx context.Context, params db.GetAgentEventParams
 // ListByTask 查询任务维度的事件时间线。
 func (r *EventRepository) ListByTask(ctx context.Context, params db.ListAgentEventsByTaskParams) ([]db.AgentEvent, error) {
 	return r.queries.ListAgentEventsByTask(ctx, params)
+}
+
+// ListByTaskAndType 查询任务维度下指定事件类型的时间线。
+func (r *EventRepository) ListByTaskAndType(ctx context.Context, params db.ListAgentEventsByTaskAndTypeParams) ([]db.AgentEvent, error) {
+	return r.queries.ListAgentEventsByTaskAndType(ctx, params)
 }
 
 // ListByType 查询指定类型的事件列表。

@@ -6,7 +6,7 @@ Agent Runtime 是一个生产级 Agent 长任务执行平台的 Go monorepo。�
 
 | 服务 | 目录 | 默认端口 | 当前职责 |
 | --- | --- | ---: | --- |
-| API Service | `cmd/api-service` | 8080 | 用户 API 入口，后续承载任务创建、查询、审批、取消和恢复 |
+| API Service | `cmd/api-service` | 8080 | 用户 API 入口，承载任务创建、查询、timeline、SSE 和 React 静态前端 |
 | Runtime Worker | `cmd/runtime-worker` | 8081 | 后台执行进程，后续承载 step、checkpoint、cancel、resume |
 | Tool Gateway | `cmd/tool-gateway` | 8082 | 工具调用网关，当前提供 MVP 工具目录占位 |
 | LLM Gateway | `cmd/llm-gateway` | 8083 | 模型调用统一入口，后续承载路由、限流、重试和 token 统计 |
@@ -16,8 +16,11 @@ Agent Runtime 是一个生产级 Agent 长任务执行平台的 Go monorepo。�
 本地直接启动单个服务：
 
 ```bash
+npm --prefix web-ui run build
 go run ./cmd/api-service
 ```
+
+启动后可访问 `http://localhost:8080/` 查看 Event Timeline 前端原型。API Service 默认托管 `web-ui/dist`，可通过 `API_SERVICE_WEB_STATIC_DIR` 覆盖。
 
 Docker 一键启动完整本地环境：
 
@@ -56,6 +59,7 @@ curl http://localhost:8083/healthz
 | `make migrate-up` | 执行数据库 up migration |
 | `make migrate-down` | 回滚最近一次 migration |
 | `make health` | 检查四个服务 health check |
+| `npm --prefix web-ui run build` | 构建 React timeline 静态文件 |
 
 ## 本地基础设施
 
@@ -78,3 +82,6 @@ curl http://localhost:8083/healthz
 | `docs/local-development.md` | 本地启动、迁移、调试、排障说明 |
 | `docs/directory-refactor-technical-document.md` | 本次目录重构技术说明 |
 | `docs/week-1-technical-document.md` | 第一周技术实现说明 |
+| `docs/week-2-database-design.md` | 第二周数据库设计说明 |
+| `docs/week-3-task-api-technical-document.md` | 第三周 Task API 技术说明 |
+| `docs/week-4-event-timeline-technical-document.md` | 第四周 AgentEvent、Timeline、SSE 和前端原型技术说明 |

@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	domainevent "agent-runtime/internal/domain/event"
 	domaintask "agent-runtime/internal/domain/task"
 	"agent-runtime/internal/infra/postgres/db"
 	"agent-runtime/internal/security/authn"
@@ -23,13 +24,17 @@ import (
 const (
 	defaultPageSize     = 20
 	maxPageSize         = 100
-	taskEventCreated    = "TASK_CREATED"
 	outboxStartWorkflow = "START_WORKFLOW"
 )
 
 type Service struct {
-	pool    *pgxpool.Pool
-	queries *db.Queries
+	pool          *pgxpool.Pool
+	queries       *db.Queries
+	eventNotifier persistedEventNotifier
+}
+
+type persistedEventNotifier interface {
+	NotifyPersisted(ctx context.Context, event domainevent.AgentEvent)
 }
 
 type CreateTaskInput struct {
@@ -102,9 +107,15 @@ type TaskPage struct {
 
 // NewService 创建任务 API 用例服务。
 func NewService(pool *pgxpool.Pool) *Service {
+	return NewServiceWithEventNotifier(pool, nil)
+}
+
+// NewServiceWithEventNotifier 创建带事件推送通知能力的任务 API 用例服务。
+func NewServiceWithEventNotifier(pool *pgxpool.Pool, notifier persistedEventNotifier) *Service {
 	return &Service{
-		pool:    pool,
-		queries: db.New(pool),
+		pool:          pool,
+		queries:       db.New(pool),
+		eventNotifier: notifier,
 	}
 }
 
@@ -129,6 +140,10 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 	traceID, err := ids.New("trace")
 	if err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInternal, "生成 trace_id 失败", err)
+	}
+	spanID, err := ids.New("span")
+	if err != nil {
+		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInternal, "生成 span_id 失败", err)
 	}
 	budgetJSON, err := json.Marshal(input.Budget)
 	if err != nil {
@@ -184,23 +199,26 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 	if err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInternal, "序列化任务事件输入失败", err)
 	}
-	// 事件元数据保留 request_id，后续 UI timeline 和服务日志可以按请求串联排查。
-	eventMetadata, err := json.Marshal(map[string]any{
-		"user_id":    input.UserID,
-		"request_id": input.RequestID,
+	// 初始事件使用统一 metadata 结构，方便 timeline、审计和日志按同一字段消费。
+	eventMetadata, err := domainevent.MarshalMetadata(domainevent.Metadata{
+		UserID:    input.UserID,
+		RequestID: input.RequestID,
+		Source:    "api-service",
 	})
 	if err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInternal, "序列化任务事件元数据失败", err)
 	}
-	if _, err := queries.CreateAgentEvent(ctx, db.CreateAgentEventParams{
+	createdEvent, err := queries.CreateAgentEvent(ctx, db.CreateAgentEventParams{
 		TenantID: input.TenantID,
 		TaskID:   taskID,
-		Type:     taskEventCreated,
+		Type:     domainevent.MustTypeForStorage(domainevent.TypeTaskCreated),
 		Input:    eventInput,
 		Output:   json.RawMessage(`null`),
 		Metadata: eventMetadata,
 		TraceID:  &traceID,
-	}); err != nil {
+		SpanID:   &spanID,
+	})
+	if err != nil {
 		return CreatedTask{}, mapPostgresWriteError(err)
 	}
 
@@ -209,6 +227,7 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 		"tenant_id":  input.TenantID,
 		"user_id":    input.UserID,
 		"trace_id":   traceID,
+		"span_id":    spanID,
 		"request_id": input.RequestID,
 	})
 	if err != nil {
@@ -230,12 +249,32 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 	if err := tx.Commit(ctx); err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeUnavailable, "提交任务创建事务失败", err)
 	}
+	if s.eventNotifier != nil {
+		// 事件必须在事务提交后推送，避免客户端收到数据库尚不可查询的 event_id。
+		s.eventNotifier.NotifyPersisted(ctx, eventFromCreatedRow(createdEvent))
+	}
 
 	return CreatedTask{
 		TaskID:    task.TaskID,
 		Status:    domaintask.StatusForAPI(string(task.Status)),
 		CreatedAt: pgTime(task.CreatedAt),
 	}, nil
+}
+
+// eventFromCreatedRow 将创建任务事务中的事件记录转换为推送事件。
+func eventFromCreatedRow(row db.AgentEvent) domainevent.AgentEvent {
+	return domainevent.AgentEvent{
+		EventID:   row.EventID,
+		TaskID:    row.TaskID,
+		TenantID:  row.TenantID,
+		Type:      row.Type,
+		Input:     domainevent.NormalizeJSONValue(row.Input),
+		Output:    domainevent.NormalizeJSONValue(row.Output),
+		Metadata:  domainevent.NormalizeMetadata(row.Metadata),
+		TraceID:   row.TraceID,
+		SpanID:    row.SpanID,
+		CreatedAt: pgTime(row.CreatedAt),
+	}
 }
 
 // GetTask 查询任务详情，并按租户和用户权限过滤访问。
