@@ -55,7 +55,7 @@ go run ./cmd/llm-gateway
 make docker-up
 ```
 
-该命令会构建四个 Go 服务镜像，并启动 PostgreSQL、Redis、Temporal、Temporal UI、MinIO、Jaeger。
+该命令会构建四个 Go 服务镜像，并启动 PostgreSQL、Redis、Temporal、Temporal UI、MinIO、Jaeger。API Service 镜像会在构建阶段生成并内置 `web-ui/dist`，启动后可以直接访问 `http://localhost:8080/` 查看 Event Timeline 前端原型。
 
 查看状态：
 

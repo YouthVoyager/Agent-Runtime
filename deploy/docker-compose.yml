@@ -13,6 +13,7 @@ x-app-env: &app-env
 x-service-build: &service-build
   context: ..
   dockerfile: Dockerfile
+  target: service-runtime
   args:
     VERSION: ${VERSION:-dev}
     COMMIT: ${COMMIT:-none}
@@ -22,6 +23,7 @@ services:
   api-service:
     build:
       <<: *service-build
+      target: api-runtime
       args:
         SERVICE: api-service
         VERSION: ${VERSION:-dev}
@@ -30,6 +32,7 @@ services:
     environment:
       <<: *app-env
       API_SERVICE_HTTP_ADDR: :8080
+      API_SERVICE_WEB_STATIC_DIR: /web-ui/dist
     ports:
       - "8080:8080"
     depends_on:

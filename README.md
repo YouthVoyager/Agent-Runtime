@@ -31,6 +31,8 @@ make docker-up
 make health
 ```
 
+Docker 镜像会在构建阶段生成并内置 `web-ui/dist`，因此通过 Compose 启动后可以直接访问 `http://localhost:8080/`。
+
 停止本地环境：
 
 ```bash
@@ -82,6 +84,7 @@ curl http://localhost:8083/healthz
 | --- | --- |
 | `docs/development-standards.md` | 代码规范、分支规范、commit 规范 |
 | `docs/local-development.md` | 本地启动、迁移、调试、排障说明 |
+| `docs/api-service-docker-static-web-technical-document.md` | API Service Docker 静态前端修复说明 |
 | `docs/directory-refactor-technical-document.md` | 本次目录重构技术说明 |
 | `docs/week-1-technical-document.md` | 第一周技术实现说明 |
 | `docs/week-2-database-design.md` | 第二周数据库设计说明 |
