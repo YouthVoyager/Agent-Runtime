@@ -141,3 +141,6 @@ make migrate-up
 
 `make lint` 依赖本机安装 `golangci-lint`。没有安装时，不影响 `make fmt`、`make test`、`make build`。
 
+### Docker Compose 找不到 Dockerfile
+
+Compose 文件位于 `deploy/docker-compose.yml`，应用服务的 build context 必须指向仓库根目录 `..`。这样执行 `docker compose -f deploy/docker-compose.yml up -d` 时，Docker 才会从仓库根目录读取 `Dockerfile`、`go.mod` 和 `cmd/` 源码。
