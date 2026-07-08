@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: Agent Runtime API
+  title: StableAgent API
   version: 0.4.0
-  description: Agent Runtime 第 4 周 API，覆盖任务创建查询、AgentEvent timeline 查询、SSE 实时推送、基础 JWT 鉴权和 tenant 隔离。
+  description: StableAgent 是一个以稳定性为核心的生产级通用 Agent 平台。本 API 覆盖任务创建查询、AgentEvent timeline 查询、SSE 实时推送、基础 JWT 鉴权和 tenant 隔离。
 servers:
   - url: http://localhost:8080
     description: 本地 API Service

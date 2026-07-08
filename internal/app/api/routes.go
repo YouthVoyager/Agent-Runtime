@@ -8,13 +8,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"agent-runtime/internal/config"
-	"agent-runtime/internal/infra/postgres"
-	redisinfra "agent-runtime/internal/infra/redis"
-	"agent-runtime/internal/security/authn"
-	httpserver "agent-runtime/internal/transport/http"
-	"agent-runtime/internal/usecase/eventapi"
-	"agent-runtime/internal/usecase/taskapi"
+	"stableagent/internal/config"
+	"stableagent/internal/infra/postgres"
+	redisinfra "stableagent/internal/infra/redis"
+	"stableagent/internal/security/authn"
+	httpserver "stableagent/internal/transport/http"
+	"stableagent/internal/usecase/eventapi"
+	"stableagent/internal/usecase/taskapi"
 )
 
 // RegisterRoutes 注册 API Service 路由并初始化任务用例依赖。

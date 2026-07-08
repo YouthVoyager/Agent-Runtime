@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"os"
 
-	"agent-runtime/internal/app"
-	llmgatewayapp "agent-runtime/internal/app/llmgateway"
+	"stableagent/internal/app"
+	llmgatewayapp "stableagent/internal/app/llmgateway"
 )
 
 // main 启动 LLM 网关服务入口。

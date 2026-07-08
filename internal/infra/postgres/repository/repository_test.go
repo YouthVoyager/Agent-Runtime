@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"agent-runtime/internal/infra/postgres/db"
+	"stableagent/internal/infra/postgres/db"
 
 	"github.com/jackc/pgx/v5"
 )

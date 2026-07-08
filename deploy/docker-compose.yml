@@ -1,8 +1,8 @@
-name: agent-runtime
+name: stableagent
 
 x-app-env: &app-env
   APP_ENV: local
-  DATABASE_URL: postgres://agent_runtime:agent_runtime@postgres:5432/agent_runtime?sslmode=disable
+  DATABASE_URL: postgres://stableagent:stableagent@postgres:5432/stableagent?sslmode=disable
   REDIS_ADDR: redis:6379
   TEMPORAL_ADDRESS: temporal:7233
   MINIO_ENDPOINT: minio:9000
@@ -106,13 +106,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: agent_runtime
-      POSTGRES_PASSWORD: agent_runtime
-      POSTGRES_DB: agent_runtime
+      POSTGRES_USER: stableagent
+      POSTGRES_PASSWORD: stableagent
+      POSTGRES_DB: stableagent
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agent_runtime -d agent_runtime"]
+      test: ["CMD-SHELL", "pg_isready -U stableagent -d stableagent"]
       interval: 5s
       timeout: 3s
       retries: 20

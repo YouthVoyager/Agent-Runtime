@@ -15,11 +15,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	domainevent "agent-runtime/internal/domain/event"
-	httpserver "agent-runtime/internal/transport/http"
-	"agent-runtime/internal/usecase/eventapi"
-	"agent-runtime/internal/usecase/taskapi"
-	apperrors "agent-runtime/pkg/errors"
+	domainevent "stableagent/internal/domain/event"
+	httpserver "stableagent/internal/transport/http"
+	"stableagent/internal/usecase/eventapi"
+	"stableagent/internal/usecase/taskapi"
+	apperrors "stableagent/pkg/errors"
 )
 
 // TestCreateTaskRoute 验证创建任务路由能解析 JWT、请求体并返回统一成功响应。

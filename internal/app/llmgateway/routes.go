@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"agent-runtime/internal/config"
-	httpserver "agent-runtime/internal/transport/http"
+	"stableagent/internal/config"
+	httpserver "stableagent/internal/transport/http"
 )
 
 // RegisterRoutes 注册 LLM Gateway 当前阶段的状态路由。

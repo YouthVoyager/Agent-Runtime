@@ -85,7 +85,7 @@ func Load(serviceName string, defaults Defaults) (Config, error) {
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 		ShutdownTimeout:   shutdownTimeout,
-		DatabaseURL:       env("DATABASE_URL", "postgres://agent_runtime:agent_runtime@localhost:5432/agent_runtime?sslmode=disable"),
+		DatabaseURL:       env("DATABASE_URL", "postgres://stableagent:stableagent@localhost:5432/stableagent?sslmode=disable"),
 		RedisAddr:         env("REDIS_ADDR", "localhost:6379"),
 		WebStaticDir:      scopedEnv(prefix, "WEB_STATIC_DIR", "web-ui/dist"),
 		TemporalAddress:   env("TEMPORAL_ADDRESS", "localhost:7233"),

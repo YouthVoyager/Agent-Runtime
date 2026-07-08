@@ -2,7 +2,7 @@
 
 ## 1. 本周目标
 
-第二周目标是把 Agent Runtime 从“服务骨架”推进到“可持久化核心业务数据”的阶段。本周完成的内容包括：
+第二周目标是把 StableAgent 从“服务骨架”推进到“可持久化核心业务数据”的阶段。本周完成的内容包括：
 
 1. PostgreSQL 核心表设计和 migration。
 2. 任务、状态、事件、工具调用、checkpoint、审批、artifact、outbox、租户和用户基础表。

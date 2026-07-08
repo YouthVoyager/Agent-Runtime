@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"agent-runtime/internal/config"
+	"stableagent/internal/config"
 )
 
 // Run 启动 HTTP 服务，并在上下文取消时执行优雅关闭。

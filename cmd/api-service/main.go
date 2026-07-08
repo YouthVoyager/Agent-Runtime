@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"os"
 
-	"agent-runtime/internal/app"
-	apiapp "agent-runtime/internal/app/api"
+	"stableagent/internal/app"
+	apiapp "stableagent/internal/app/api"
 )
 
 // main 启动用户 API 服务入口。

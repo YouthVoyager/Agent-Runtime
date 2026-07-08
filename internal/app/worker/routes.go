@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"agent-runtime/internal/config"
-	httpserver "agent-runtime/internal/transport/http"
+	"stableagent/internal/config"
+	httpserver "stableagent/internal/transport/http"
 )
 
 // RegisterRoutes 注册 Runtime Worker 当前阶段的状态路由。
@@ -16,7 +16,7 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 	router.Get("/runtime/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteJSON(w, http.StatusOK, map[string]any{
 			"service": cfg.ServiceName,
-			"role":    "Agent Runtime 后台执行进程，后续负责 step、checkpoint、cancel 和 resume",
+			"role":    "StableAgent 后台执行进程，后续负责 step、checkpoint、cancel 和 resume",
 			"worker":  "idle",
 		})
 	})

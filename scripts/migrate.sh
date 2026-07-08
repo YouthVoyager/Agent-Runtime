@@ -4,8 +4,8 @@ set -euo pipefail
 ACTION="${1:-up}"
 COMPOSE="${COMPOSE:-docker compose -f deploy/docker-compose.yml}"
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres}"
-POSTGRES_USER="${POSTGRES_USER:-agent_runtime}"
-POSTGRES_DB="${POSTGRES_DB:-agent_runtime}"
+POSTGRES_USER="${POSTGRES_USER:-stableagent}"
+POSTGRES_DB="${POSTGRES_DB:-stableagent}"
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-db/migrations}"
 
 shopt -s nullglob

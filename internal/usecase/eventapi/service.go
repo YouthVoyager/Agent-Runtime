@@ -11,11 +11,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	domainevent "agent-runtime/internal/domain/event"
-	"agent-runtime/internal/infra/postgres/db"
-	"agent-runtime/internal/security/authn"
-	"agent-runtime/internal/security/authz"
-	apperrors "agent-runtime/pkg/errors"
+	domainevent "stableagent/internal/domain/event"
+	"stableagent/internal/infra/postgres/db"
+	"stableagent/internal/security/authn"
+	"stableagent/internal/security/authz"
+	apperrors "stableagent/pkg/errors"
 )
 
 const (

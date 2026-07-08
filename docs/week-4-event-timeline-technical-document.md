@@ -2,7 +2,7 @@
 
 ## 1. 本周目标
 
-本周实现 Agent Runtime 的事件记录、timeline 查询、SSE 实时推送和前端 timeline 原型。实现遵循 `设计方案.md` 中的 AgentEvent、timeline、SSE 和可观测 trace 统一设计：
+本周实现 StableAgent 的事件记录、timeline 查询、SSE 实时推送和前端 timeline 原型。实现遵循 `设计方案.md` 中的 AgentEvent、timeline、SSE 和可观测 trace 统一设计：
 
 1. `task_id` 作为业务主线。
 2. `trace_id` 作为技术链路主线。
@@ -190,7 +190,7 @@ data: {"event_id":13,"task_id":"task_001","type":"STEP_COMPLETED"}
 本周接入 Redis Pub/Sub：
 
 1. API Service 启动时创建 Redis EventBus。
-2. 每个 API 实例订阅 `agent-runtime:events`。
+2. 每个 API 实例订阅 `stableagent:events`。
 3. EventService 写 DB 成功后：
    - 推送到本地 hub。
    - 发布到 Redis channel。

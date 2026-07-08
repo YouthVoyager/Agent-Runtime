@@ -12,10 +12,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	domainevent "agent-runtime/internal/domain/event"
-	httpserver "agent-runtime/internal/transport/http"
-	"agent-runtime/internal/usecase/eventapi"
-	apperrors "agent-runtime/pkg/errors"
+	domainevent "stableagent/internal/domain/event"
+	httpserver "stableagent/internal/transport/http"
+	"stableagent/internal/usecase/eventapi"
+	apperrors "stableagent/pkg/errors"
 )
 
 const (

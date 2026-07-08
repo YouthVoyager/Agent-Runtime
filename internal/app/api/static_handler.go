@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"agent-runtime/internal/config"
-	httpserver "agent-runtime/internal/transport/http"
-	apperrors "agent-runtime/pkg/errors"
+	"stableagent/internal/config"
+	httpserver "stableagent/internal/transport/http"
+	apperrors "stableagent/pkg/errors"
 )
 
 // registerWebRoutes 注册 React build 静态文件路由，API 路由未命中仍返回 JSON 错误。

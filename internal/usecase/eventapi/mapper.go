@@ -5,8 +5,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	domainevent "agent-runtime/internal/domain/event"
-	"agent-runtime/internal/infra/postgres/db"
+	domainevent "stableagent/internal/domain/event"
+	"stableagent/internal/infra/postgres/db"
 )
 
 // eventFromDB 将数据库事件记录转换为 API 可返回的领域事件。

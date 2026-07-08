@@ -60,8 +60,8 @@ POST /api/v1/tasks
 | `pkg/ids/ids.go` | 生成全局唯一的 `task_id` 和 `trace_id` |
 | `db/queries/tasks.sql` | 补齐创建任务 trace_id 写入、任务列表缺失查询 |
 | `api/openapi.yaml` | 第 3 周 Task API OpenAPI 文档 |
-| `api/postman/agent-runtime.postman_collection.json` | Postman 调试集合 |
-| `api/bruno/agent-runtime` | Bruno 调试集合 |
+| `api/postman/stableagent.postman_collection.json` | Postman 调试集合 |
+| `api/bruno/stableagent` | Bruno 调试集合 |
 
 ## 4. 鉴权与上下文
 
@@ -349,13 +349,13 @@ api/openapi.yaml
 Postman 集合：
 
 ```text
-api/postman/agent-runtime.postman_collection.json
+api/postman/stableagent.postman_collection.json
 ```
 
 Bruno 集合：
 
 ```text
-api/bruno/agent-runtime
+api/bruno/stableagent
 ```
 
 调试前需要设置：

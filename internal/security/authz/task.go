@@ -3,7 +3,7 @@ package authz
 import (
 	"strings"
 
-	"agent-runtime/internal/security/authn"
+	"stableagent/internal/security/authn"
 )
 
 // CanListTenantTasks 判断用户是否具备查看租户内全部任务的权限。

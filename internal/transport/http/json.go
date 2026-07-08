@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	apperrors "agent-runtime/pkg/errors"
+	apperrors "stableagent/pkg/errors"
 )
 
 type SuccessResponse struct {

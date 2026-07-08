@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"agent-runtime/pkg/errors"
+	"stableagent/pkg/errors"
 )
 
 type Middleware func(http.Handler) http.Handler

@@ -12,13 +12,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	domainevent "agent-runtime/internal/domain/event"
-	domaintask "agent-runtime/internal/domain/task"
-	"agent-runtime/internal/infra/postgres/db"
-	"agent-runtime/internal/security/authn"
-	"agent-runtime/internal/security/authz"
-	apperrors "agent-runtime/pkg/errors"
-	"agent-runtime/pkg/ids"
+	domainevent "stableagent/internal/domain/event"
+	domaintask "stableagent/internal/domain/task"
+	"stableagent/internal/infra/postgres/db"
+	"stableagent/internal/security/authn"
+	"stableagent/internal/security/authz"
+	apperrors "stableagent/pkg/errors"
+	"stableagent/pkg/ids"
 )
 
 const (

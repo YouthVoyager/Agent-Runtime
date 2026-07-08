@@ -1,6 +1,8 @@
-# Agent Runtime
+# StableAgent：生产级通用 Agent 执行平台
 
-Agent Runtime 是一个生产级 Agent 长任务执行平台的 Go monorepo。当前已按设计方案完成目录分层：四个服务入口保留在 `cmd/`，服务路由下沉到 `internal/app/`，传输层、可观测性、基础设施和公共工具分别归入对应目录。
+StableAgent 是一个以稳定性为核心的生产级通用 Agent 平台，支持长任务可恢复执行、工具调用安全治理、人工审批、执行 timeline、checkpoint、cancel/resume 和完整可观测 trace。
+
+当前仓库是 StableAgent 的 Go monorepo，已按设计方案完成目录分层：四个服务入口保留在 `cmd/`，服务路由下沉到 `internal/app/`，传输层、可观测性、基础设施和公共工具分别归入对应目录。
 
 ## 服务边界
 
@@ -85,3 +87,4 @@ curl http://localhost:8083/healthz
 | `docs/week-2-database-design.md` | 第二周数据库设计说明 |
 | `docs/week-3-task-api-technical-document.md` | 第三周 Task API 技术说明 |
 | `docs/week-4-event-timeline-technical-document.md` | 第四周 AgentEvent、Timeline、SSE 和前端原型技术说明 |
+| `docs/stableagent-rename-technical-document.md` | StableAgent 项目改名技术说明 |

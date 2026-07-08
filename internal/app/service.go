@@ -11,10 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"agent-runtime/internal/config"
-	"agent-runtime/internal/observability/logging"
-	httpserver "agent-runtime/internal/transport/http"
-	apperrors "agent-runtime/pkg/errors"
+	"stableagent/internal/config"
+	"stableagent/internal/observability/logging"
+	httpserver "stableagent/internal/transport/http"
+	apperrors "stableagent/pkg/errors"
 )
 
 type RegisterRoutes func(router chi.Router, cfg config.Config, logger *slog.Logger) (func(context.Context) error, error)

@@ -2,7 +2,7 @@
 
 ## 1. 本周目标
 
-第一周目标是完成 Agent Runtime 的工程基础，不实现完整任务业务闭环。交付内容包括：
+第一周目标是完成 StableAgent 的工程基础，不实现完整任务业务闭环。交付内容包括：
 
 1. Go monorepo 工程结构。
 2. 四个服务入口：`api-service`、`runtime-worker`、`tool-gateway`、`llm-gateway`。

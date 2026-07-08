@@ -12,12 +12,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	domaintask "agent-runtime/internal/domain/task"
-	"agent-runtime/internal/security/authn"
-	securitytenant "agent-runtime/internal/security/tenant"
-	httpserver "agent-runtime/internal/transport/http"
-	"agent-runtime/internal/usecase/taskapi"
-	apperrors "agent-runtime/pkg/errors"
+	domaintask "stableagent/internal/domain/task"
+	"stableagent/internal/security/authn"
+	securitytenant "stableagent/internal/security/tenant"
+	httpserver "stableagent/internal/transport/http"
+	"stableagent/internal/usecase/taskapi"
+	apperrors "stableagent/pkg/errors"
 )
 
 const maxTaskRequestBodyBytes = 1 << 20

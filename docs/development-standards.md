@@ -16,7 +16,7 @@
 ```text
 cmd/
   api-service/       用户 API 服务入口
-  runtime-worker/    Agent Runtime 后台进程入口
+  runtime-worker/    StableAgent 后台进程入口
   tool-gateway/      工具调用网关入口
   llm-gateway/       LLM 网关入口
 internal/

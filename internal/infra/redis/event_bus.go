@@ -9,10 +9,10 @@ import (
 
 	redisclient "github.com/redis/go-redis/v9"
 
-	domainevent "agent-runtime/internal/domain/event"
+	domainevent "stableagent/internal/domain/event"
 )
 
-const AgentEventChannel = "agent-runtime:events"
+const AgentEventChannel = "stableagent:events"
 
 type EventBus struct {
 	client  *redisclient.Client

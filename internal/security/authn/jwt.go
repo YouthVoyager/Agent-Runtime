@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	securitytenant "agent-runtime/internal/security/tenant"
-	httpserver "agent-runtime/internal/transport/http"
-	apperrors "agent-runtime/pkg/errors"
+	securitytenant "stableagent/internal/security/tenant"
+	httpserver "stableagent/internal/transport/http"
+	apperrors "stableagent/pkg/errors"
 )
 
 type JWTMiddlewareConfig struct {

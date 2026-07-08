@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'https://esm.sh/react@19.2.3'
 import { createRoot } from 'https://esm.sh/react-dom@19.2.3/client';
 
 const h = React.createElement;
+const TOKEN_STORAGE_KEY = 'stableagent_jwt';
+const LEGACY_TOKEN_STORAGE_KEY = 'agent_runtime_jwt';
 
 const DEFAULT_BUDGET = {
   max_steps: 50,
@@ -20,7 +22,7 @@ const EVENT_META = {
 
 // App 渲染任务创建和 timeline 实时查看工作台。
 function App() {
-  const [token, setToken] = useState(() => localStorage.getItem('agent_runtime_jwt') || '');
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY) || '');
   const [taskId, setTaskId] = useState('');
   const [goal, setGoal] = useState('分析需求文档并生成生产级 Go 技术方案');
   const [events, setEvents] = useState([]);
@@ -33,7 +35,8 @@ function App() {
   const lastEventIdRef = useRef(0);
 
   useEffect(() => {
-    localStorage.setItem('agent_runtime_jwt', token);
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
   }, [token]);
 
   useEffect(() => {
@@ -187,7 +190,7 @@ function App() {
         'div',
         { className: 'brand-row' },
         h(Icon, { name: '◉' }),
-        h('div', null, h('h1', null, 'Agent Runtime'), h('span', null, 'Event Timeline')),
+        h('div', null, h('h1', null, 'StableAgent'), h('span', null, '生产级通用 Agent 执行平台')),
       ),
       h(
         'form',

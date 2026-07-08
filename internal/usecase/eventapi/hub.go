@@ -3,7 +3,7 @@ package eventapi
 import (
 	"sync"
 
-	domainevent "agent-runtime/internal/domain/event"
+	domainevent "stableagent/internal/domain/event"
 )
 
 const DefaultHubBuffer = 64

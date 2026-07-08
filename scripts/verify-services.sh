@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG_DIR="${LOG_DIR:-/tmp/agent-runtime-verify}"
+LOG_DIR="${LOG_DIR:-/tmp/stableagent-verify}"
 mkdir -p "${LOG_DIR}"
 
 pids=()

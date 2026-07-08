@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	domainevent "agent-runtime/internal/domain/event"
-	apperrors "agent-runtime/pkg/errors"
+	domainevent "stableagent/internal/domain/event"
+	apperrors "stableagent/pkg/errors"
 )
 
 // TestAppendParamsRejectsUnknownType 验证事件追加参数会拒绝未知事件类型。

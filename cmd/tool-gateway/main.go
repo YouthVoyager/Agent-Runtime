@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"os"
 
-	"agent-runtime/internal/app"
-	toolgatewayapp "agent-runtime/internal/app/toolgateway"
+	"stableagent/internal/app"
+	toolgatewayapp "stableagent/internal/app/toolgateway"
 )
 
 // main 启动工具调用网关服务入口。

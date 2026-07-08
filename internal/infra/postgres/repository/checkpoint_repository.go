@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"agent-runtime/internal/infra/postgres/db"
+	"stableagent/internal/infra/postgres/db"
 )
 
 type CheckpointQueries interface {

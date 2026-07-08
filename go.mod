@@ -1,4 +1,4 @@
-module agent-runtime
+module stableagent
 
 go 1.26.4
 

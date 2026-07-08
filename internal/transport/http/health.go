@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"agent-runtime/internal/config"
-	"agent-runtime/pkg/version"
+	"stableagent/internal/config"
+	"stableagent/pkg/version"
 )
 
 type HealthPayload struct {
