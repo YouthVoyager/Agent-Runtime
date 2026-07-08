@@ -16,6 +16,7 @@ type ToolIntent struct {
 
 type ChatRequest struct {
 	TaskID      string          `json:"task_id"`
+	TenantID    string          `json:"tenant_id"`
 	Goal        string          `json:"goal"`
 	CurrentStep int32           `json:"current_step"`
 	Constraints json.RawMessage `json:"constraints"`

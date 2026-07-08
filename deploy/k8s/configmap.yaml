@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stableagent-config
+  namespace: stableagent
+data:
+  APP_ENV: "prod"
+  LOG_LEVEL: "info"
+  SHUTDOWN_TIMEOUT: "15s"
+  WORKER_POLL_INTERVAL: "1s"
+  # 服务发现:集群内 Service 名称。
+  LLM_GATEWAY_URL: "http://llm-gateway:8083"
+  TOOL_GATEWAY_URL: "http://tool-gateway:8082"
+  # 基础设施地址按环境替换:生产建议使用云数据库 / 云 Redis / S3。
+  REDIS_ADDR: "redis:6379"
+  MINIO_ENDPOINT: "minio:9000"
+  MINIO_BUCKET: "stableagent-artifacts"
+  MINIO_USE_SSL: "false"
+  ARTIFACT_INLINE_MAX_BYTES: "4096"
+  # OpenTelemetry Collector;留空则不导出 trace。
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"

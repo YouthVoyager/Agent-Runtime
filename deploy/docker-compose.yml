@@ -6,7 +6,10 @@ x-app-env: &app-env
   REDIS_ADDR: redis:6379
   TEMPORAL_ADDRESS: temporal:7233
   MINIO_ENDPOINT: minio:9000
+  ARTIFACT_INLINE_MAX_BYTES: ${ARTIFACT_INLINE_MAX_BYTES:-4096}
   JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+  # OTel SDK 通过 OTLP HTTP 导出 trace 到 Jaeger;置空则不导出。
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
   LLM_GATEWAY_URL: http://llm-gateway:8083
   TOOL_GATEWAY_URL: http://tool-gateway:8082
   LOG_LEVEL: info

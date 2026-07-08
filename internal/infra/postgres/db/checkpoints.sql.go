@@ -131,6 +131,39 @@ func (q *Queries) GetLatestCheckpoint(ctx context.Context, arg GetLatestCheckpoi
 	return i, err
 }
 
+const getLatestCheckpointByReason = `-- name: GetLatestCheckpointByReason :one
+select checkpoint_id, task_id, tenant_id, state_version, event_offset, state_snapshot, reason, trace_id, created_at
+from checkpoints
+where tenant_id = $1
+  and task_id = $2
+  and reason = $3
+order by created_at desc, checkpoint_id desc
+limit 1
+`
+
+type GetLatestCheckpointByReasonParams struct {
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	TaskID   string `db:"task_id" json:"task_id"`
+	Reason   string `db:"reason" json:"reason"`
+}
+
+func (q *Queries) GetLatestCheckpointByReason(ctx context.Context, arg GetLatestCheckpointByReasonParams) (Checkpoint, error) {
+	row := q.db.QueryRow(ctx, getLatestCheckpointByReason, arg.TenantID, arg.TaskID, arg.Reason)
+	var i Checkpoint
+	err := row.Scan(
+		&i.CheckpointID,
+		&i.TaskID,
+		&i.TenantID,
+		&i.StateVersion,
+		&i.EventOffset,
+		&i.StateSnapshot,
+		&i.Reason,
+		&i.TraceID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listCheckpointsByTask = `-- name: ListCheckpointsByTask :many
 select checkpoint_id, task_id, tenant_id, state_version, event_offset, state_snapshot, reason, trace_id, created_at
 from checkpoints
@@ -181,4 +214,29 @@ func (q *Queries) ListCheckpointsByTask(ctx context.Context, arg ListCheckpoints
 		return nil, err
 	}
 	return items, nil
+}
+
+const pruneCheckpoints = `-- name: PruneCheckpoints :exec
+delete from checkpoints
+where checkpoints.tenant_id = $1
+  and checkpoints.task_id = $2
+  and checkpoints.checkpoint_id not in (
+      select recent.checkpoint_id
+      from checkpoints as recent
+      where recent.tenant_id = $1
+        and recent.task_id = $2
+      order by recent.created_at desc, recent.checkpoint_id desc
+      limit $3
+  )
+`
+
+type PruneCheckpointsParams struct {
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	TaskID   string `db:"task_id" json:"task_id"`
+	KeepRows int32  `db:"keep_rows" json:"keep_rows"`
+}
+
+func (q *Queries) PruneCheckpoints(ctx context.Context, arg PruneCheckpointsParams) error {
+	_, err := q.db.Exec(ctx, pruneCheckpoints, arg.TenantID, arg.TaskID, arg.KeepRows)
+	return err
 }

@@ -2,10 +2,13 @@ package toolgateway
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -14,16 +17,24 @@ import (
 
 	domainevent "stableagent/internal/domain/event"
 	domaintool "stableagent/internal/domain/toolcall"
+	"stableagent/internal/infra/objectstore"
 	"stableagent/internal/infra/postgres/db"
+	"stableagent/internal/observability/tracing"
 	"stableagent/internal/usecase/eventapi"
 	apperrors "stableagent/pkg/errors"
 	"stableagent/pkg/ids"
 )
 
+// defaultApprovalTTL 定义高风险审批的默认有效期,超时未决策由 worker 置为 EXPIRED。
+const defaultApprovalTTL = 24 * time.Hour
+
 type Service struct {
 	pool    *pgxpool.Pool
 	queries *db.Queries
 	events  *eventapi.Service
+	// store 为空时全部 artifact 内容存 PostgreSQL。
+	store          objectstore.Store
+	inlineMaxBytes int64
 }
 
 type CallInput struct {
@@ -50,7 +61,16 @@ type CallResult struct {
 
 // NewService 创建工具网关用例服务。
 func NewService(pool *pgxpool.Pool, events *eventapi.Service) *Service {
-	return &Service{pool: pool, queries: db.New(pool), events: events}
+	return &Service{pool: pool, queries: db.New(pool), events: events, inlineMaxBytes: 4096}
+}
+
+// WithObjectStore 配置对象存储与内联阈值:超过 inlineMaxBytes 的 artifact 内容写对象存储。
+func (s *Service) WithObjectStore(store objectstore.Store, inlineMaxBytes int64) *Service {
+	s.store = store
+	if inlineMaxBytes > 0 {
+		s.inlineMaxBytes = inlineMaxBytes
+	}
+	return s
 }
 
 // Catalog 返回本地闭环内置工具目录。
@@ -76,6 +96,9 @@ func (s *Service) Call(ctx context.Context, input CallInput) (CallResult, error)
 	arguments, err := domaintool.NormalizeArguments(input.Arguments)
 	if err != nil {
 		return CallResult{}, apperrors.Wrap(apperrors.CodeInvalidArg, err.Error(), err)
+	}
+	if err := domaintool.ValidateArguments(definition.Schema, arguments); err != nil {
+		return CallResult{}, apperrors.Wrap(apperrors.CodeInvalidArg, "工具参数 schema 校验失败: "+err.Error(), err)
 	}
 	if err := s.applyTenantPolicy(ctx, input.TenantID, definition); err != nil {
 		return CallResult{}, err
@@ -192,7 +215,7 @@ func (s *Service) createApprovalCall(ctx context.Context, input CallInput, defin
 		RiskLevel:      db.RiskLevel(definition.RiskLevel),
 		ApprovalReason: &reason,
 		Comment:        nil,
-		ExpiresAt:      pgtype.Timestamptz{},
+		ExpiresAt:      pgtype.Timestamptz{Time: time.Now().Add(defaultApprovalTTL), Valid: true},
 	}); err != nil {
 		return CallResult{}, mapWriteError("创建审批记录失败", err)
 	}
@@ -321,6 +344,8 @@ func (s *Service) executeTool(ctx context.Context, input CallInput, call db.Tool
 
 // writeArtifact 将 Mock 产物写入 artifacts 表。
 func (s *Service) writeArtifact(ctx context.Context, input CallInput, args map[string]any) (json.RawMessage, *string, error) {
+	ctx, span := tracing.StartSpan(ctx, "artifact.save", input.TaskID, input.TenantID)
+	defer span.End()
 	artifactID, err := ids.New("artifact")
 	if err != nil {
 		return nil, nil, err
@@ -333,6 +358,22 @@ func (s *Service) writeArtifact(ctx context.Context, input CallInput, args map[s
 	if err != nil {
 		return nil, nil, err
 	}
+	checksum := sha256Hex(content)
+	// 小内容内联存 PostgreSQL;超过阈值写对象存储,只在 DB 保存 storage_key。
+	storageBackend := "POSTGRES"
+	var storageKey *string
+	contentJSON := content
+	if s.store != nil && int64(len(content)) > s.inlineMaxBytes {
+		key := fmt.Sprintf("%s/%s/%s.json", input.TenantID, input.TaskID, artifactID)
+		if putErr := s.store.Put(ctx, key, "application/json", content); putErr != nil {
+			// 对象存储不可用时回退内联存储,任务不因此失败。
+			_ = s.appendEvent(ctx, input, domainevent.TypeArtifactSaved, map[string]any{"artifact_id": artifactID}, map[string]any{"object_store_fallback": putErr.Error()})
+		} else {
+			storageBackend = "S3"
+			storageKey = &key
+			contentJSON = nil
+		}
+	}
 	artifact, err := s.queries.CreateArtifact(ctx, db.CreateArtifactParams{
 		ArtifactID:     artifactID,
 		TenantID:       input.TenantID,
@@ -341,11 +382,11 @@ func (s *Service) writeArtifact(ctx context.Context, input CallInput, args map[s
 		Type:           db.ArtifactTypeJSON,
 		Name:           firstString(args, "name", "stableagent-report"),
 		MediaType:      stringPtr("application/json"),
-		StorageBackend: "POSTGRES",
-		StorageKey:     nil,
-		ContentJson:    content,
+		StorageBackend: storageBackend,
+		StorageKey:     storageKey,
+		ContentJson:    contentJSON,
 		SizeBytes:      int64(len(content)),
-		ChecksumSha256: nil,
+		ChecksumSha256: &checksum,
 		Metadata:       json.RawMessage(`{"provider":"mock-tool-gateway"}`),
 		Status:         db.ArtifactStatusAVAILABLE,
 	})
@@ -433,6 +474,12 @@ func firstString(values map[string]any, key string, fallback string) string {
 		return fallback
 	}
 	return strings.TrimSpace(value)
+}
+
+// sha256Hex 计算内容的 SHA-256 摘要。
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // stringPtr 返回字符串指针。

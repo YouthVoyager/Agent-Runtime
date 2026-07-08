@@ -34,7 +34,8 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 		}
 		resp, err := service.Chat(r.Context(), req)
 		if err != nil {
-			httpserver.WriteError(w, r, apperrors.Wrap(apperrors.CodeInternal, "生成 Mock LLM 响应失败", err))
+			// Chat 已返回带错误码的应用错误(限流 429、参数 400、上游不可用 503),透传给客户端。
+			httpserver.WriteError(w, r, err)
 			return
 		}
 		httpserver.WriteData(w, http.StatusOK, resp)

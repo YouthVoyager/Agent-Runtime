@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"stableagent/internal/config"
+	"stableagent/internal/infra/objectstore"
 	"stableagent/internal/infra/postgres"
 	redisinfra "stableagent/internal/infra/redis"
 	httpserver "stableagent/internal/transport/http"
@@ -30,6 +31,20 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 	eventBus := redisinfra.NewEventBus(cfg.RedisAddr, logger)
 	eventService := eventapi.NewService(pool, eventHub, eventBus, logger)
 	service := toolusecase.NewService(pool, eventService)
+	// 对象存储不可用不阻塞启动:大 artifact 回退内联存 PostgreSQL。
+	store, err := objectstore.NewMinIO(context.Background(), objectstore.Config{
+		Endpoint:  cfg.MinIOEndpoint,
+		AccessKey: cfg.MinIOAccessKey,
+		SecretKey: cfg.MinIOSecretKey,
+		Bucket:    cfg.MinIOBucket,
+		UseSSL:    cfg.MinIOUseSSL,
+	})
+	if err != nil {
+		logger.Warn("初始化 MinIO 对象存储失败,artifact 全部内联存 PostgreSQL", "error", err)
+	} else if store != nil {
+		service.WithObjectStore(store, cfg.ArtifactInlineMaxBytes)
+		logger.Info("MinIO 对象存储已启用", "endpoint", cfg.MinIOEndpoint, "bucket", cfg.MinIOBucket, "inline_max_bytes", cfg.ArtifactInlineMaxBytes)
+	}
 
 	router.Get("/tools/v1/catalog", func(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteData(w, http.StatusOK, map[string]any{

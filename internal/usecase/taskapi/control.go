@@ -13,6 +13,7 @@ import (
 	domainevent "stableagent/internal/domain/event"
 	domaintask "stableagent/internal/domain/task"
 	"stableagent/internal/infra/postgres/db"
+	"stableagent/internal/observability/tracing"
 	"stableagent/internal/security/authn"
 	"stableagent/internal/security/authz"
 	apperrors "stableagent/pkg/errors"
@@ -160,8 +161,9 @@ func (s *Service) ResumeTask(ctx context.Context, input ResumeTaskInput) (Resume
 	if status == domaintask.StatusWaitingApproval {
 		return ResumeTaskResult{}, apperrors.New(apperrors.CodeConflict, "等待审批的任务需要先处理审批")
 	}
-	if status == domaintask.StatusSucceeded || status == domaintask.StatusCanceled {
-		return ResumeTaskResult{}, apperrors.New(apperrors.CodeConflict, "任务已处于终态，无法恢复")
+	// 设计方案 §5.4:resume 仅允许 FAILED / PAUSED / STOPPED_BY_LIMIT(含 RETRYABLE_FAILED)。
+	if !domaintask.CanResume(status) {
+		return ResumeTaskResult{}, apperrors.New(apperrors.CodeConflict, "当前状态不允许恢复任务")
 	}
 	checkpoint, err := s.queries.GetLatestCheckpoint(ctx, db.GetLatestCheckpointParams{
 		TenantID: input.TenantID,
@@ -219,6 +221,8 @@ func (s *Service) ResumeTask(ctx context.Context, input ResumeTaskInput) (Resume
 
 // DecideToolCall 审批或拒绝工具调用，并按结果重新排队或失败任务。
 func (s *Service) DecideToolCall(ctx context.Context, input DecideToolCallInput) (ToolCallDecisionResult, error) {
+	ctx, span := tracing.StartSpan(ctx, "approval.decide", "", input.TenantID)
+	defer span.End()
 	call, err := s.queries.GetToolCall(ctx, db.GetToolCallParams{
 		TenantID: input.TenantID,
 		CallID:   input.CallID,

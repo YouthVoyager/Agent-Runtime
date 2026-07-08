@@ -98,6 +98,16 @@ where tenant_id = sqlc.arg(tenant_id)
   and task_id = sqlc.arg(task_id)
 returning *;
 
+-- name: MarkAgentTaskStopped :one
+update agent_tasks
+set status = 'STOPPED_BY_LIMIT',
+    last_error_code = sqlc.arg(last_error_code),
+    last_error_message = sqlc.arg(last_error_message),
+    updated_at = now()
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+returning *;
+
 -- name: CreateTaskIdempotencyKey :exec
 insert into task_idempotency_keys (
     tenant_id,

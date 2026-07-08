@@ -225,17 +225,45 @@ async function scenarioSSE() {
   console.log(`场景7 SSE Last-Event-ID 通过: 补发 ${received.length} 条`);
 }
 
-// scenarioBudgetExceeded 校验预算超限时任务停止并记录 BUDGET_EXCEEDED。
+// scenarioBudgetExceeded 校验预算超限时任务落 STOPPED_BY_LIMIT,提高预算后可 resume 恢复。
 async function scenarioBudgetExceeded() {
   const task = await createTask('高风险审批发送邮件,验证预算超限停止');
   const pending = await waitPendingCall(task.task_id);
   psql(`update agent_tasks set budget = '{"max_steps":1,"max_tokens":200000,"max_tool_calls":40,"max_cost_usd":10}'::jsonb, budget_usage = '{"used_steps":1,"used_tokens":10,"used_tool_calls":0,"used_cost_usd":0.01}'::jsonb where task_id = '${task.task_id}';`);
   await api(`/api/v1/tool-calls/${pending.call_id}/approve`, { method: 'POST', body: { comment: '触发预算检查' } });
-  await waitTask(task.task_id, ['FAILED']);
+  await waitTask(task.task_id, ['STOPPED_BY_LIMIT']);
   const events = await api(`/api/v1/tasks/${task.task_id}/events?limit=100`);
-  const failedEvent = events.items.find((item) => item.type === 'TASK_FAILED' && item.input?.error_code === 'BUDGET_EXCEEDED');
-  assert(failedEvent, '未找到 BUDGET_EXCEEDED 的 TASK_FAILED 事件');
-  console.log(`场景8 预算超限通过: ${task.task_id}`);
+  const stoppedEvent = events.items.find((item) => item.type === 'TASK_STOPPED_BY_LIMIT' && item.input?.error_code === 'BUDGET_EXCEEDED');
+  assert(stoppedEvent, '未找到 BUDGET_EXCEEDED 的 TASK_STOPPED_BY_LIMIT 事件');
+  psql(`update agent_tasks set budget = '{"max_steps":10,"max_tokens":200000,"max_tool_calls":40,"max_cost_usd":10}'::jsonb where task_id = '${task.task_id}';`);
+  const resumed = await api(`/api/v1/tasks/${task.task_id}/resume`, { method: 'POST' });
+  assert(resumed.status === 'QUEUED', `超限任务 resume 后应 QUEUED,实际 ${resumed.status}`);
+  await waitTask(task.task_id, ['SUCCEEDED']);
+  console.log(`场景8 预算超限停止与恢复通过: ${task.task_id}`);
+}
+
+// scenarioLoopDetection 校验 LoopDetector 在连续重复 step 时停止任务。
+async function scenarioLoopDetection() {
+  const task = await createTask('循环读取文档,验证循环检测');
+  const stopped = await waitTask(task.task_id, ['STOPPED_BY_LIMIT']);
+  const events = await api(`/api/v1/tasks/${task.task_id}/events?limit=200`);
+  const loopEvent = events.items.find((item) => item.type === 'TASK_STOPPED_BY_LIMIT' && item.input?.error_code === 'LOOP_DETECTED');
+  assert(loopEvent, '未找到 LOOP_DETECTED 的 TASK_STOPPED_BY_LIMIT 事件');
+  assert(stopped.budget_usage?.used_steps >= 2, `循环检测前应至少完成 2 步,实际 ${stopped.budget_usage?.used_steps}`);
+  console.log(`场景11 循环检测通过: ${task.task_id}`);
+}
+
+// scenarioMultiStepPlan 校验默认目标按多 step 计划执行:read_document → write_artifact → 终态。
+async function scenarioMultiStepPlan() {
+  const task = await createTask('生成多 step 计划验证报告');
+  const done = await waitTask(task.task_id, ['SUCCEEDED']);
+  const calls = await api(`/api/v1/tasks/${task.task_id}/tool-calls`);
+  const readCalls = calls.items.filter((item) => item.tool_name === 'read_document' && item.status === 'SUCCEEDED');
+  const writeCalls = calls.items.filter((item) => item.tool_name === 'write_artifact' && item.status === 'SUCCEEDED');
+  assert(readCalls.length === 1, `read_document 应执行一次,实际 ${readCalls.length}`);
+  assert(writeCalls.length === 1, `write_artifact 应执行一次,实际 ${writeCalls.length}`);
+  assert(done.budget_usage?.used_steps === 3, `多 step 任务应消耗 3 步,实际 ${done.budget_usage?.used_steps}`);
+  console.log(`场景12 多 step 计划通过: ${task.task_id}`);
 }
 
 // scenarioTenantPolicyDeny 校验租户 DENY 策略拦截工具调用。
@@ -278,6 +306,8 @@ async function main() {
     ['场景8 预算超限', scenarioBudgetExceeded],
     ['场景9 租户策略 DENY', scenarioTenantPolicyDeny],
     ['场景10 worker 重启恢复', scenarioWorkerRestart],
+    ['场景11 循环检测', scenarioLoopDetection],
+    ['场景12 多 step 计划', scenarioMultiStepPlan],
   ];
   const failures = [];
   for (const [name, run] of scenarios) {

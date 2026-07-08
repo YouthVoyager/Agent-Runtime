@@ -173,6 +173,41 @@ func (q *Queries) DecideApprovalByCall(ctx context.Context, arg DecideApprovalBy
 	return i, err
 }
 
+const expireApproval = `-- name: ExpireApproval :one
+update approvals
+set status = 'EXPIRED',
+    decided_at = now()
+where tenant_id = $1
+  and approval_id = $2
+  and status = 'PENDING'
+returning approval_id, task_id, tenant_id, call_id, approver_id, status, risk_level, approval_reason, comment, expires_at, decided_at, created_at
+`
+
+type ExpireApprovalParams struct {
+	TenantID   string `db:"tenant_id" json:"tenant_id"`
+	ApprovalID string `db:"approval_id" json:"approval_id"`
+}
+
+func (q *Queries) ExpireApproval(ctx context.Context, arg ExpireApprovalParams) (Approval, error) {
+	row := q.db.QueryRow(ctx, expireApproval, arg.TenantID, arg.ApprovalID)
+	var i Approval
+	err := row.Scan(
+		&i.ApprovalID,
+		&i.TaskID,
+		&i.TenantID,
+		&i.CallID,
+		&i.ApproverID,
+		&i.Status,
+		&i.RiskLevel,
+		&i.ApprovalReason,
+		&i.Comment,
+		&i.ExpiresAt,
+		&i.DecidedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getApprovalByCall = `-- name: GetApprovalByCall :one
 select approval_id, task_id, tenant_id, call_id, approver_id, status, risk_level, approval_reason, comment, expires_at, decided_at, created_at
 from approvals
@@ -204,6 +239,49 @@ func (q *Queries) GetApprovalByCall(ctx context.Context, arg GetApprovalByCallPa
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listExpiredPendingApprovals = `-- name: ListExpiredPendingApprovals :many
+select approval_id, task_id, tenant_id, call_id, approver_id, status, risk_level, approval_reason, comment, expires_at, decided_at, created_at
+from approvals
+where status = 'PENDING'
+  and expires_at is not null
+  and expires_at < now()
+order by expires_at asc
+limit $1
+`
+
+func (q *Queries) ListExpiredPendingApprovals(ctx context.Context, limitRows int32) ([]Approval, error) {
+	rows, err := q.db.Query(ctx, listExpiredPendingApprovals, limitRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Approval{}
+	for rows.Next() {
+		var i Approval
+		if err := rows.Scan(
+			&i.ApprovalID,
+			&i.TaskID,
+			&i.TenantID,
+			&i.CallID,
+			&i.ApproverID,
+			&i.Status,
+			&i.RiskLevel,
+			&i.ApprovalReason,
+			&i.Comment,
+			&i.ExpiresAt,
+			&i.DecidedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPendingApprovalsByTask = `-- name: ListPendingApprovalsByTask :many

@@ -16,6 +16,7 @@ import (
 	domainevent "stableagent/internal/domain/event"
 	domaintask "stableagent/internal/domain/task"
 	"stableagent/internal/infra/postgres/db"
+	"stableagent/internal/observability/tracing"
 	"stableagent/internal/security/authn"
 	"stableagent/internal/security/authz"
 	apperrors "stableagent/pkg/errors"
@@ -134,6 +135,8 @@ func NewServiceWithEventNotifierAndCancelStore(pool *pgxpool.Pool, notifier pers
 
 // CreateTask 创建 Agent 任务，并在同一事务内写入初始状态、审计事件和 outbox 消息。
 func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (CreatedTask, error) {
+	ctx, span := tracing.StartSpan(ctx, "task.create", "", input.TenantID)
+	defer span.End()
 	goal, err := domaintask.NormalizeGoal(input.Goal)
 	if err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInvalidArg, err.Error(), err)

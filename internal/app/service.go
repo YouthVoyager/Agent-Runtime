@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +13,8 @@ import (
 
 	"stableagent/internal/config"
 	"stableagent/internal/observability/logging"
+	"stableagent/internal/observability/metrics"
+	"stableagent/internal/observability/tracing"
 	httpserver "stableagent/internal/transport/http"
 	apperrors "stableagent/pkg/errors"
 )
@@ -29,10 +30,24 @@ func RunHTTPService(serviceName string, defaultAddr string, register RegisterRou
 
 	logger := logging.New(cfg)
 	startedAt := time.Now()
+
+	// OTel 追踪初始化;未配置 OTEL_EXPORTER_OTLP_ENDPOINT 时保持 no-op。
+	traceShutdown, err := tracing.Setup(context.Background(), cfg.ServiceName, cfg.Env)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = traceShutdown(shutdownCtx)
+	}()
+
 	router := chi.NewRouter()
 	router.Use(
 		httpserver.WithRecovery(logger),
 		httpserver.WithRequestID(cfg.RequestIDHeader),
+		httpserver.WithTracing(cfg.ServiceName),
+		httpserver.WithMetrics(cfg.ServiceName),
 		httpserver.WithAccessLog(logger),
 	)
 	// 未匹配路由和方法不支持也走统一错误结构，避免框架默认纯文本响应泄漏到 API。
@@ -44,16 +59,9 @@ func RunHTTPService(serviceName string, defaultAddr string, register RegisterRou
 	})
 
 	httpserver.RegisterHealthRoutes(router, cfg, startedAt)
-	router.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		uptime := time.Since(startedAt).Seconds()
-		_, _ = fmt.Fprintf(w, "# HELP stableagent_service_up Whether the service process is up.\n")
-		_, _ = fmt.Fprintf(w, "# TYPE stableagent_service_up gauge\n")
-		_, _ = fmt.Fprintf(w, "stableagent_service_up{service=%q,env=%q} 1\n", cfg.ServiceName, cfg.Env)
-		_, _ = fmt.Fprintf(w, "# HELP stableagent_service_uptime_seconds Process uptime in seconds.\n")
-		_, _ = fmt.Fprintf(w, "# TYPE stableagent_service_uptime_seconds gauge\n")
-		_, _ = fmt.Fprintf(w, "stableagent_service_uptime_seconds{service=%q,env=%q} %.0f\n", cfg.ServiceName, cfg.Env, uptime)
-	})
+	// /metrics 使用 prometheus/client_golang,包含 Go runtime、HTTP、任务与工具调用指标。
+	metrics.ServiceUp.WithLabelValues(cfg.ServiceName, cfg.Env).Set(1)
+	router.Method(http.MethodGet, "/metrics", metrics.Handler())
 	var cleanup func(context.Context) error
 	if register != nil {
 		routeCleanup, err := register(router, cfg, logger)

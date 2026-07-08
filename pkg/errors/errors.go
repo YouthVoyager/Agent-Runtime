@@ -19,6 +19,7 @@ const (
 	CodeConflict         Code = "CONFLICT"
 	CodeUnavailable      Code = "SERVICE_UNAVAILABLE"
 	CodeNotImplemented   Code = "NOT_IMPLEMENTED"
+	CodeRateLimited      Code = "RATE_LIMITED"
 )
 
 type Error struct {
@@ -88,6 +89,8 @@ func HTTPStatus(code Code) int {
 		return http.StatusServiceUnavailable
 	case CodeNotImplemented:
 		return http.StatusNotImplemented
+	case CodeRateLimited:
+		return http.StatusTooManyRequests
 	default:
 		return http.StatusInternalServerError
 	}

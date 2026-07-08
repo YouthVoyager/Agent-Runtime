@@ -13,6 +13,8 @@ const (
 	StatusCanceled        Status = "CANCELED"
 	StatusSucceeded       Status = "SUCCEEDED"
 	StatusFailed          Status = "FAILED"
+	StatusRetryableFailed Status = "RETRYABLE_FAILED"
+	StatusStoppedByLimit  Status = "STOPPED_BY_LIMIT"
 )
 
 // ParseStatus 标准化并校验任务状态字符串。
@@ -26,7 +28,9 @@ func ParseStatus(raw string) (Status, bool) {
 		StatusCanceling,
 		StatusCanceled,
 		StatusSucceeded,
-		StatusFailed:
+		StatusFailed,
+		StatusRetryableFailed,
+		StatusStoppedByLimit:
 		return status, true
 	default:
 		return "", false
@@ -40,4 +44,14 @@ func StatusForAPI(status string) string {
 		return strings.ToUpper(strings.TrimSpace(status))
 	}
 	return string(parsed)
+}
+
+// CanResume 判断任务状态是否允许 resume,设计方案 §5.4 只允许失败、暂停和超限停止。
+func CanResume(status Status) bool {
+	switch status {
+	case StatusFailed, StatusRetryableFailed, StatusPaused, StatusStoppedByLimit:
+		return true
+	default:
+		return false
+	}
 }

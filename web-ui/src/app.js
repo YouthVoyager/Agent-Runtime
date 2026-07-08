@@ -24,6 +24,8 @@ const EVENT_META = {
   TASK_COMPLETED: { label: '任务完成', icon: '✓', tone: 'green' },
   TASK_FAILED: { label: '任务失败', icon: '!', tone: 'red' },
   TASK_CANCELLED: { label: '任务取消', icon: '×', tone: 'red' },
+  TASK_STOPPED_BY_LIMIT: { label: '超限停止', icon: '‖', tone: 'amber' },
+  TASK_RESUMED: { label: '任务恢复', icon: '↻', tone: 'blue' },
 };
 
 // App 渲染 StableAgent 本地生产闭环工作台。

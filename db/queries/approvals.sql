@@ -59,3 +59,21 @@ where tenant_id = sqlc.arg(tenant_id)
   and task_id = sqlc.arg(task_id)
   and status = 'PENDING'
 order by created_at asc;
+
+-- name: ListExpiredPendingApprovals :many
+select *
+from approvals
+where status = 'PENDING'
+  and expires_at is not null
+  and expires_at < now()
+order by expires_at asc
+limit sqlc.arg(limit_rows);
+
+-- name: ExpireApproval :one
+update approvals
+set status = 'EXPIRED',
+    decided_at = now()
+where tenant_id = sqlc.arg(tenant_id)
+  and approval_id = sqlc.arg(approval_id)
+  and status = 'PENDING'
+returning *;

@@ -154,3 +154,23 @@ Temporal SDK、OpenTelemetry、Prometheus client(/metrics 为手写文本)、NAT
 **两个需要优先处理的偏差**:P1(SSE 中间件缺陷,一行级修复,恢复设计必须项)和 P2(resume 状态校验缺失,数据一致性风险),已另行分支修复中。P3-P5 已于 2026-07-08 修复(见各条目),P6 复核后撤销(误报)。
 
 **架构级差距**均为 local-production-loop 文档中已声明的 MVP 取舍,替换点(workflow_id、outbox、PromptVersion、storage_backend 字段)已预留,与设计方案的演进路径一致。
+
+---
+
+## 五、2026-07-08 功能补齐更新
+
+本报告 §三 中标记为 ⏳/⚠️/❌ 的多数条目已实现,详见 `design-full-implementation-technical-document.md`:
+
+- 多 step 计划执行、崩溃恢复复用已存 LLM 输出、LoopDetector → ✅(e2e 场景 10/11/12)
+- 状态枚举补齐 STOPPED_BY_LIMIT / RETRYABLE_FAILED,预算超限落 STOPPED_BY_LIMIT 且可 resume → ✅(e2e 场景 8)
+- 工具参数 JSON Schema 校验 → ✅
+- LLM Gateway 路由(Provider 抽象)/重试/限流/prompt 版本 → ✅
+- 审批 expires_at 过期处理 → ✅
+- Prometheus client_golang 真实指标 → ✅(实测 /metrics)
+- OpenTelemetry SDK + OTLP 导出 + 全链路 span → ✅(实测 Jaeger)
+- MinIO/S3 对象存储保存大 artifact → ✅(实测)
+- checkpoint 保留最近 20 个 → ✅
+- Kubernetes 清单(deploy/k8s)→ ✅
+- timeline `next_after_event_id`:复核发现实现早已存在,原条目记录过时 → ✅
+
+剩余架构级差距(设计允许的取舍):Temporal SDK、gRPC、NATS/Kafka、真实 LLM Provider、Vault/KMS、event 表分区、多级审批。

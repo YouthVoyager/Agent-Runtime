@@ -10,6 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
+	"stableagent/internal/observability/metrics"
+	"stableagent/internal/observability/tracing"
 	"stableagent/pkg/errors"
 )
 
@@ -91,6 +97,40 @@ func WithAccessLog(logger *slog.Logger) Middleware {
 				"duration_ms", time.Since(startedAt).Milliseconds(),
 				"remote_addr", r.RemoteAddr,
 			)
+		})
+	}
+}
+
+// WithTracing 提取上游 W3C trace 上下文并为每个请求创建 server span。
+// 未配置 OTel exporter 时为 no-op provider,开销可忽略。
+func WithTracing(serviceName string) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := tracing.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+			ctx, span := tracing.Tracer().Start(ctx, r.Method+" "+r.URL.Path,
+				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithAttributes(
+					attribute.String("service.name", serviceName),
+					attribute.String("http.method", r.Method),
+					attribute.String("http.target", r.URL.Path),
+				),
+			)
+			defer span.End()
+			recorder := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+			next.ServeHTTP(recorder, r.WithContext(ctx))
+			span.SetAttributes(attribute.Int("http.status_code", recorder.statusCode))
+		})
+	}
+}
+
+// WithMetrics 记录 HTTP 请求量与耗时指标。
+func WithMetrics(serviceName string) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			startedAt := time.Now()
+			recorder := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+			next.ServeHTTP(recorder, r)
+			metrics.ObserveHTTPRequest(serviceName, r.Method, recorder.statusCode, time.Since(startedAt))
 		})
 	}
 }

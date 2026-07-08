@@ -245,6 +245,8 @@ const (
 	TaskStatusCANCELED        TaskStatus = "CANCELED"
 	TaskStatusSUCCEEDED       TaskStatus = "SUCCEEDED"
 	TaskStatusFAILED          TaskStatus = "FAILED"
+	TaskStatusSTOPPEDBYLIMIT  TaskStatus = "STOPPED_BY_LIMIT"
+	TaskStatusRETRYABLEFAILED TaskStatus = "RETRYABLE_FAILED"
 )
 
 func (e *TaskStatus) Scan(src interface{}) error {

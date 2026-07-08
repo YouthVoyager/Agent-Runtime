@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -14,26 +15,32 @@ type Defaults struct {
 }
 
 type Config struct {
-	ServiceName        string
-	Env                string
-	HTTPAddr           string
-	LogLevel           string
-	ReadTimeout        time.Duration
-	ReadHeaderTimeout  time.Duration
-	WriteTimeout       time.Duration
-	IdleTimeout        time.Duration
-	ShutdownTimeout    time.Duration
-	DatabaseURL        string
-	RedisAddr          string
-	WebStaticDir       string
-	TemporalAddress    string
-	MinIOEndpoint      string
-	JaegerEndpoint     string
-	LLMGatewayURL      string
-	ToolGatewayURL     string
-	WorkerPollInterval time.Duration
-	RequestIDHeader    string
-	JWTSecret          string
+	ServiceName       string
+	Env               string
+	HTTPAddr          string
+	LogLevel          string
+	ReadTimeout       time.Duration
+	ReadHeaderTimeout time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	ShutdownTimeout   time.Duration
+	DatabaseURL       string
+	RedisAddr         string
+	WebStaticDir      string
+	TemporalAddress   string
+	MinIOEndpoint     string
+	MinIOAccessKey    string
+	MinIOSecretKey    string
+	MinIOBucket       string
+	MinIOUseSSL       bool
+	// ArtifactInlineMaxBytes 以内的 artifact 内容直接存 PostgreSQL,超过则写对象存储。
+	ArtifactInlineMaxBytes int64
+	JaegerEndpoint         string
+	LLMGatewayURL          string
+	ToolGatewayURL         string
+	WorkerPollInterval     time.Duration
+	RequestIDHeader        string
+	JWTSecret              string
 }
 
 // Load 读取服务配置，按服务级环境变量优先、全局环境变量兜底的顺序合并默认值。
@@ -81,28 +88,37 @@ func Load(serviceName string, defaults Defaults) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	artifactInlineMaxBytes, err := int64Env(prefix, "ARTIFACT_INLINE_MAX_BYTES", 4096)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		ServiceName:        scopedEnv(prefix, "SERVICE_NAME", serviceName),
-		Env:                env("APP_ENV", "local"),
-		HTTPAddr:           httpAddr,
-		LogLevel:           scopedEnv(prefix, "LOG_LEVEL", "info"),
-		ReadTimeout:        readTimeout,
-		ReadHeaderTimeout:  readHeaderTimeout,
-		WriteTimeout:       writeTimeout,
-		IdleTimeout:        idleTimeout,
-		ShutdownTimeout:    shutdownTimeout,
-		DatabaseURL:        env("DATABASE_URL", "postgres://stableagent:stableagent@localhost:5432/stableagent?sslmode=disable"),
-		RedisAddr:          env("REDIS_ADDR", "localhost:6379"),
-		WebStaticDir:       scopedEnv(prefix, "WEB_STATIC_DIR", "web-ui/dist"),
-		TemporalAddress:    env("TEMPORAL_ADDRESS", "localhost:7233"),
-		MinIOEndpoint:      env("MINIO_ENDPOINT", "localhost:9000"),
-		JaegerEndpoint:     env("JAEGER_ENDPOINT", "http://localhost:14268/api/traces"),
-		LLMGatewayURL:      env("LLM_GATEWAY_URL", "http://localhost:8083"),
-		ToolGatewayURL:     env("TOOL_GATEWAY_URL", "http://localhost:8082"),
-		WorkerPollInterval: workerPollInterval,
-		RequestIDHeader:    scopedEnv(prefix, "REQUEST_ID_HEADER", "X-Request-ID"),
-		JWTSecret:          scopedEnv(prefix, "JWT_SECRET", "local-dev-secret"),
+		ServiceName:            scopedEnv(prefix, "SERVICE_NAME", serviceName),
+		Env:                    env("APP_ENV", "local"),
+		HTTPAddr:               httpAddr,
+		LogLevel:               scopedEnv(prefix, "LOG_LEVEL", "info"),
+		ReadTimeout:            readTimeout,
+		ReadHeaderTimeout:      readHeaderTimeout,
+		WriteTimeout:           writeTimeout,
+		IdleTimeout:            idleTimeout,
+		ShutdownTimeout:        shutdownTimeout,
+		DatabaseURL:            env("DATABASE_URL", "postgres://stableagent:stableagent@localhost:5432/stableagent?sslmode=disable"),
+		RedisAddr:              env("REDIS_ADDR", "localhost:6379"),
+		WebStaticDir:           scopedEnv(prefix, "WEB_STATIC_DIR", "web-ui/dist"),
+		TemporalAddress:        env("TEMPORAL_ADDRESS", "localhost:7233"),
+		MinIOEndpoint:          env("MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey:         env("MINIO_ACCESS_KEY", "minioadmin"),
+		MinIOSecretKey:         env("MINIO_SECRET_KEY", "minioadmin"),
+		MinIOBucket:            env("MINIO_BUCKET", "stableagent-artifacts"),
+		MinIOUseSSL:            env("MINIO_USE_SSL", "false") == "true",
+		ArtifactInlineMaxBytes: artifactInlineMaxBytes,
+		JaegerEndpoint:         env("JAEGER_ENDPOINT", "http://localhost:14268/api/traces"),
+		LLMGatewayURL:          env("LLM_GATEWAY_URL", "http://localhost:8083"),
+		ToolGatewayURL:         env("TOOL_GATEWAY_URL", "http://localhost:8082"),
+		WorkerPollInterval:     workerPollInterval,
+		RequestIDHeader:        scopedEnv(prefix, "REQUEST_ID_HEADER", "X-Request-ID"),
+		JWTSecret:              scopedEnv(prefix, "JWT_SECRET", "local-dev-secret"),
 	}, nil
 }
 
@@ -133,6 +149,19 @@ func durationEnv(prefix string, key string, fallback time.Duration) (time.Durati
 	value, err := time.ParseDuration(raw)
 	if err != nil {
 		return 0, fmt.Errorf("配置 %s 不是合法 duration: %w", key, err)
+	}
+	return value, nil
+}
+
+// int64Env 读取并解析整数配置。
+func int64Env(prefix string, key string, fallback int64) (int64, error) {
+	raw := scopedEnv(prefix, key, "")
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("配置 %s 不是合法整数: %w", key, err)
 	}
 	return value, nil
 }

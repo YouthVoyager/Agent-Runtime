@@ -2,90 +2,88 @@ package llmgateway
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
-	"unicode/utf8"
+	"time"
 
 	"stableagent/internal/domain/runtimeplan"
+	apperrors "stableagent/pkg/errors"
 )
 
-type Service struct{}
+// Config 定义 LLM Gateway 的生产级控制参数。
+type Config struct {
+	// Timeout 单次 provider 调用超时。
+	Timeout time.Duration
+	// MaxRetries 可重试错误的最大重试次数(不含首次调用)。
+	MaxRetries int
+	// RatePerMinute 每租户每分钟请求上限,<= 0 不限流。
+	RatePerMinute int
+}
 
-// NewService 创建 LLM Gateway 用例服务。
+type Service struct {
+	provider Provider
+	limiter  *tenantRateLimiter
+	timeout  time.Duration
+	retries  int
+	sleep    func(time.Duration)
+}
+
+// NewService 创建 LLM Gateway 用例服务,默认使用确定性 Mock Provider。
 func NewService() *Service {
-	return &Service{}
+	return NewServiceWith(NewMockProvider(), Config{})
 }
 
-// Chat 根据任务目标和当前步骤生成确定性的 Mock 模型响应。
+// NewServiceWith 以指定 Provider 和配置创建服务,生产接入真实模型时使用。
+func NewServiceWith(provider Provider, cfg Config) *Service {
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = 60 * time.Second
+	}
+	if cfg.MaxRetries < 0 {
+		cfg.MaxRetries = 0
+	}
+	if cfg.MaxRetries == 0 {
+		cfg.MaxRetries = 2
+	}
+	if cfg.RatePerMinute == 0 {
+		cfg.RatePerMinute = 600
+	}
+	return &Service{
+		provider: provider,
+		limiter:  newTenantRateLimiter(cfg.RatePerMinute, nil),
+		timeout:  cfg.Timeout,
+		retries:  cfg.MaxRetries,
+		sleep:    time.Sleep,
+	}
+}
+
+// Chat 统一入口:限流、超时、重试后调用 Provider,并回填 prompt 版本。
 func (s *Service) Chat(ctx context.Context, input runtimeplan.ChatRequest) (runtimeplan.ChatResponse, error) {
-	_ = ctx
-	goal := strings.TrimSpace(input.Goal)
-	if input.CurrentStep > 0 {
-		return runtimeplan.ChatResponse{
-			Model:         "mock-deterministic-agent",
-			PromptVersion: "local-v1",
-			Content:       "任务已完成，无需继续调用工具。",
-			IsFinal:       true,
-			Usage:         estimateUsage(goal, "任务已完成"),
-		}, nil
+	if strings.TrimSpace(input.Goal) == "" {
+		return runtimeplan.ChatResponse{}, apperrors.New(apperrors.CodeInvalidArg, "goal 不能为空")
 	}
+	if !s.limiter.Allow(input.TenantID) {
+		return runtimeplan.ChatResponse{}, apperrors.New(apperrors.CodeRateLimited, "租户 LLM 请求超过限流阈值")
+	}
+	prompt := ActivePrompt()
 
-	toolName := "write_artifact"
-	arguments := map[string]any{
-		"name":    "stableagent-report",
-		"summary": "根据任务目标生成本地生产闭环报告",
-		"goal":    goal,
-	}
-	lowerGoal := strings.ToLower(goal)
-	switch {
-	case strings.Contains(goal, "危险") || strings.Contains(lowerGoal, "critical"):
-		toolName = "dangerous_admin_action"
-		arguments = map[string]any{
-			"action": "rotate-production-secret",
-			"reason": goal,
+	var lastErr error
+	for attempt := 0; attempt <= s.retries; attempt++ {
+		if attempt > 0 {
+			// 指数退避:100ms、200ms、400ms……
+			s.sleep(time.Duration(100<<(attempt-1)) * time.Millisecond)
 		}
-	case strings.Contains(goal, "高风险") || strings.Contains(goal, "审批") || strings.Contains(goal, "邮件") || strings.Contains(lowerGoal, "send"):
-		toolName = "send_external_message"
-		arguments = map[string]any{
-			"recipient": "ops@example.local",
-			"subject":   "StableAgent 高风险工具审批演示",
-			"body":      goal,
+		callCtx, cancel := context.WithTimeout(ctx, s.timeout)
+		resp, err := s.provider.Chat(callCtx, input, prompt)
+		cancel()
+		if err == nil {
+			if resp.PromptVersion == "" {
+				resp.PromptVersion = prompt.Version
+			}
+			return resp, nil
 		}
-	case strings.Contains(goal, "读取") || strings.Contains(lowerGoal, "read"):
-		toolName = "read_document"
-		arguments = map[string]any{
-			"path": "设计方案.md",
-			"goal": goal,
+		lastErr = err
+		if ctx.Err() != nil || !IsRetryable(err) {
+			break
 		}
 	}
-
-	payload, err := json.Marshal(arguments)
-	if err != nil {
-		return runtimeplan.ChatResponse{}, err
-	}
-	content := "生成第 1 步工具调用：" + toolName
-	return runtimeplan.ChatResponse{
-		Model:         "mock-deterministic-agent",
-		PromptVersion: "local-v1",
-		Content:       content,
-		ToolCall: &runtimeplan.ToolIntent{
-			ToolName:  toolName,
-			Arguments: payload,
-		},
-		IsFinal: false,
-		Usage:   estimateUsage(goal, content),
-	}, nil
-}
-
-// estimateUsage 基于输入输出长度生成稳定 token 估算。
-func estimateUsage(input string, output string) runtimeplan.TokenUsage {
-	inputTokens := utf8.RuneCountInString(input)/2 + 8
-	outputTokens := utf8.RuneCountInString(output)/2 + 8
-	total := inputTokens + outputTokens
-	return runtimeplan.TokenUsage{
-		InputTokens:  inputTokens,
-		OutputTokens: outputTokens,
-		TotalTokens:  total,
-		CostUSD:      float64(total) * 0.000001,
-	}
+	return runtimeplan.ChatResponse{}, apperrors.Wrap(apperrors.CodeUnavailable, "LLM provider 调用失败", lastErr)
 }

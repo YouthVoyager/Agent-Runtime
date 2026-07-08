@@ -484,6 +484,50 @@ func (q *Queries) MarkAgentTaskFailed(ctx context.Context, arg MarkAgentTaskFail
 	return i, err
 }
 
+const markAgentTaskStopped = `-- name: MarkAgentTaskStopped :one
+update agent_tasks
+set status = 'STOPPED_BY_LIMIT',
+    last_error_code = $1,
+    last_error_message = $2,
+    updated_at = now()
+where tenant_id = $3
+  and task_id = $4
+returning task_id, tenant_id, user_id, goal, status, budget, budget_usage, workflow_id, trace_id, last_error_code, last_error_message, created_at, updated_at
+`
+
+type MarkAgentTaskStoppedParams struct {
+	LastErrorCode    *string `db:"last_error_code" json:"last_error_code"`
+	LastErrorMessage *string `db:"last_error_message" json:"last_error_message"`
+	TenantID         string  `db:"tenant_id" json:"tenant_id"`
+	TaskID           string  `db:"task_id" json:"task_id"`
+}
+
+func (q *Queries) MarkAgentTaskStopped(ctx context.Context, arg MarkAgentTaskStoppedParams) (AgentTask, error) {
+	row := q.db.QueryRow(ctx, markAgentTaskStopped,
+		arg.LastErrorCode,
+		arg.LastErrorMessage,
+		arg.TenantID,
+		arg.TaskID,
+	)
+	var i AgentTask
+	err := row.Scan(
+		&i.TaskID,
+		&i.TenantID,
+		&i.UserID,
+		&i.Goal,
+		&i.Status,
+		&i.Budget,
+		&i.BudgetUsage,
+		&i.WorkflowID,
+		&i.TraceID,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateAgentTaskBudgetUsage = `-- name: UpdateAgentTaskBudgetUsage :one
 update agent_tasks
 set budget_usage = $1,
