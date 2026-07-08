@@ -149,7 +149,8 @@ services:
   temporal:
     image: temporalio/auto-setup:1.25
     environment:
-      DB: postgresql
+      # Temporal auto-setup 的 PostgreSQL 驱动名必须使用官方支持的 postgres12。
+      DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: temporal
       POSTGRES_PWD: temporal
