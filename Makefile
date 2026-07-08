@@ -4,7 +4,7 @@ SERVICES := api-service runtime-worker tool-gateway llm-gateway
 SQLC_VERSION ?= latest
 COMPOSE_FILE ?= deploy/docker-compose.yml
 
-.PHONY: fmt lint test build clean sqlc-generate run-api run-worker run-tool run-llm docker-up docker-down docker-ps migrate-up migrate-down migrate-status health verify-services jwt e2e-local
+.PHONY: fmt lint test build clean sqlc-generate run-api run-worker run-tool run-llm docker-up docker-down docker-ps migrate-up migrate-down migrate-status health verify-services jwt e2e-local e2e-extended
 
 fmt:
 	gofmt -w $(shell find . -name '*.go' -not -path './.git/*')
@@ -68,3 +68,6 @@ jwt:
 
 e2e-local:
 	STABLEAGENT_JWT="$$(node scripts/generate-jwt.mjs)" node scripts/e2e-local.mjs
+
+e2e-extended:
+	node scripts/e2e-extended.mjs
