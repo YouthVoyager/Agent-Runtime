@@ -14,23 +14,26 @@ type Defaults struct {
 }
 
 type Config struct {
-	ServiceName       string
-	Env               string
-	HTTPAddr          string
-	LogLevel          string
-	ReadTimeout       time.Duration
-	ReadHeaderTimeout time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-	ShutdownTimeout   time.Duration
-	DatabaseURL       string
-	RedisAddr         string
-	WebStaticDir      string
-	TemporalAddress   string
-	MinIOEndpoint     string
-	JaegerEndpoint    string
-	RequestIDHeader   string
-	JWTSecret         string
+	ServiceName        string
+	Env                string
+	HTTPAddr           string
+	LogLevel           string
+	ReadTimeout        time.Duration
+	ReadHeaderTimeout  time.Duration
+	WriteTimeout       time.Duration
+	IdleTimeout        time.Duration
+	ShutdownTimeout    time.Duration
+	DatabaseURL        string
+	RedisAddr          string
+	WebStaticDir       string
+	TemporalAddress    string
+	MinIOEndpoint      string
+	JaegerEndpoint     string
+	LLMGatewayURL      string
+	ToolGatewayURL     string
+	WorkerPollInterval time.Duration
+	RequestIDHeader    string
+	JWTSecret          string
 }
 
 // Load 读取服务配置，按服务级环境变量优先、全局环境变量兜底的顺序合并默认值。
@@ -74,25 +77,32 @@ func Load(serviceName string, defaults Defaults) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	workerPollInterval, err := durationEnv(prefix, "WORKER_POLL_INTERVAL", time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		ServiceName:       scopedEnv(prefix, "SERVICE_NAME", serviceName),
-		Env:               env("APP_ENV", "local"),
-		HTTPAddr:          httpAddr,
-		LogLevel:          scopedEnv(prefix, "LOG_LEVEL", "info"),
-		ReadTimeout:       readTimeout,
-		ReadHeaderTimeout: readHeaderTimeout,
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       idleTimeout,
-		ShutdownTimeout:   shutdownTimeout,
-		DatabaseURL:       env("DATABASE_URL", "postgres://stableagent:stableagent@localhost:5432/stableagent?sslmode=disable"),
-		RedisAddr:         env("REDIS_ADDR", "localhost:6379"),
-		WebStaticDir:      scopedEnv(prefix, "WEB_STATIC_DIR", "web-ui/dist"),
-		TemporalAddress:   env("TEMPORAL_ADDRESS", "localhost:7233"),
-		MinIOEndpoint:     env("MINIO_ENDPOINT", "localhost:9000"),
-		JaegerEndpoint:    env("JAEGER_ENDPOINT", "http://localhost:14268/api/traces"),
-		RequestIDHeader:   scopedEnv(prefix, "REQUEST_ID_HEADER", "X-Request-ID"),
-		JWTSecret:         scopedEnv(prefix, "JWT_SECRET", "local-dev-secret"),
+		ServiceName:        scopedEnv(prefix, "SERVICE_NAME", serviceName),
+		Env:                env("APP_ENV", "local"),
+		HTTPAddr:           httpAddr,
+		LogLevel:           scopedEnv(prefix, "LOG_LEVEL", "info"),
+		ReadTimeout:        readTimeout,
+		ReadHeaderTimeout:  readHeaderTimeout,
+		WriteTimeout:       writeTimeout,
+		IdleTimeout:        idleTimeout,
+		ShutdownTimeout:    shutdownTimeout,
+		DatabaseURL:        env("DATABASE_URL", "postgres://stableagent:stableagent@localhost:5432/stableagent?sslmode=disable"),
+		RedisAddr:          env("REDIS_ADDR", "localhost:6379"),
+		WebStaticDir:       scopedEnv(prefix, "WEB_STATIC_DIR", "web-ui/dist"),
+		TemporalAddress:    env("TEMPORAL_ADDRESS", "localhost:7233"),
+		MinIOEndpoint:      env("MINIO_ENDPOINT", "localhost:9000"),
+		JaegerEndpoint:     env("JAEGER_ENDPOINT", "http://localhost:14268/api/traces"),
+		LLMGatewayURL:      env("LLM_GATEWAY_URL", "http://localhost:8083"),
+		ToolGatewayURL:     env("TOOL_GATEWAY_URL", "http://localhost:8082"),
+		WorkerPollInterval: workerPollInterval,
+		RequestIDHeader:    scopedEnv(prefix, "REQUEST_ID_HEADER", "X-Request-ID"),
+		JWTSecret:          scopedEnv(prefix, "JWT_SECRET", "local-dev-secret"),
 	}, nil
 }
 

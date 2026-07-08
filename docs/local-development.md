@@ -113,11 +113,27 @@ make health
 ```bash
 curl http://localhost:8080/healthz
 curl http://localhost:8081/healthz
-curl http://localhost:8082/healthz
+curl http://localhost:18082/healthz
 curl http://localhost:8083/healthz
 ```
 
-## 7. 常见问题
+## 7. 本地闭环验证
+
+第 3 个迁移会写入本地开发租户 `tenant_local` 和用户 `admin_local/user_local`。生成 admin JWT：
+
+```bash
+make jwt
+```
+
+四个服务启动并完成迁移后执行：
+
+```bash
+make e2e-local
+```
+
+该脚本会创建普通任务、高风险审批任务、取消任务和失败恢复任务，验证 timeline、tool call、checkpoint 和 artifact 查询接口。
+
+## 8. 常见问题
 
 ### 端口被占用
 

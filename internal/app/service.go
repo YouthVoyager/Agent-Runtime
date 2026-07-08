@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -43,6 +44,16 @@ func RunHTTPService(serviceName string, defaultAddr string, register RegisterRou
 	})
 
 	httpserver.RegisterHealthRoutes(router, cfg, startedAt)
+	router.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		uptime := time.Since(startedAt).Seconds()
+		_, _ = fmt.Fprintf(w, "# HELP stableagent_service_up Whether the service process is up.\n")
+		_, _ = fmt.Fprintf(w, "# TYPE stableagent_service_up gauge\n")
+		_, _ = fmt.Fprintf(w, "stableagent_service_up{service=%q,env=%q} 1\n", cfg.ServiceName, cfg.Env)
+		_, _ = fmt.Fprintf(w, "# HELP stableagent_service_uptime_seconds Process uptime in seconds.\n")
+		_, _ = fmt.Fprintf(w, "# TYPE stableagent_service_uptime_seconds gauge\n")
+		_, _ = fmt.Fprintf(w, "stableagent_service_uptime_seconds{service=%q,env=%q} %.0f\n", cfg.ServiceName, cfg.Env, uptime)
+	})
 	var cleanup func(context.Context) error
 	if register != nil {
 		routeCleanup, err := register(router, cfg, logger)

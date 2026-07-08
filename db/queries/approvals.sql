@@ -40,3 +40,22 @@ set status = sqlc.arg(status),
 where tenant_id = sqlc.arg(tenant_id)
   and approval_id = sqlc.arg(approval_id)
 returning *;
+
+-- name: DecideApprovalByCall :one
+update approvals
+set status = sqlc.arg(status),
+    approver_id = sqlc.arg(approver_id),
+    comment = sqlc.narg(comment),
+    decided_at = coalesce(decided_at, now())
+where tenant_id = sqlc.arg(tenant_id)
+  and call_id = sqlc.arg(call_id)
+  and status = 'PENDING'
+returning *;
+
+-- name: ListPendingApprovalsByTask :many
+select *
+from approvals
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+  and status = 'PENDING'
+order by created_at asc;

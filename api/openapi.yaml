@@ -236,7 +236,162 @@ paths:
           $ref: "#/components/responses/NotFound"
         "503":
           $ref: "#/components/responses/Unavailable"
+  /api/v1/tasks/{task_id}/cancel:
+    post:
+      summary: 取消任务
+      description: 写入 Redis cancel flag，并把任务状态置为 CANCELING；Worker 在安全边界落到 CANCELED。
+      operationId: cancelTask
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+      responses:
+        "200":
+          description: 任务进入取消中或已是终态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /api/v1/tasks/{task_id}/resume:
+    post:
+      summary: 恢复任务
+      description: 校验最近 checkpoint 后重新写入 START_WORKFLOW outbox 并把任务置为 QUEUED。
+      operationId: resumeTask
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+      responses:
+        "200":
+          description: 任务已重新排队
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeTaskResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/tasks/{task_id}/tool-calls:
+    get:
+      summary: 查询任务工具调用
+      operationId: listTaskToolCalls
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: 工具调用列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListToolCallsResponse"
+  /api/v1/tasks/{task_id}/checkpoints:
+    get:
+      summary: 查询任务 checkpoint
+      operationId: listTaskCheckpoints
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: checkpoint 列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCheckpointsResponse"
+  /api/v1/tasks/{task_id}/artifacts:
+    get:
+      summary: 查询任务 artifacts
+      operationId: listTaskArtifacts
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: artifact 列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListArtifactsResponse"
+  /api/v1/tool-calls/{call_id}/approve:
+    post:
+      summary: 审批通过工具调用
+      operationId: approveToolCall
+      parameters:
+        - $ref: "#/components/parameters/CallID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionRequest"
+      responses:
+        "200":
+          description: 审批通过，任务重新排队
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolCallDecisionResponse"
+  /api/v1/tool-calls/{call_id}/reject:
+    post:
+      summary: 审批拒绝工具调用
+      operationId: rejectToolCall
+      parameters:
+        - $ref: "#/components/parameters/CallID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionRequest"
+      responses:
+        "200":
+          description: 审批拒绝，任务失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolCallDecisionResponse"
 components:
+  parameters:
+    TaskID:
+      name: task_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+    CallID:
+      name: call_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    Offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
   securitySchemes:
     bearerAuth:
       type: http
@@ -308,6 +463,10 @@ components:
           minLength: 1
           maxLength: 8000
           example: 分析需求文档并生成生产级 Go 技术方案
+        client_request_id:
+          type: string
+          maxLength: 160
+          description: 客户端幂等键；同一 tenant、user、client_request_id 重复提交会返回第一次创建的任务。
         budget:
           $ref: "#/components/schemas/Budget"
         constraints:
@@ -385,6 +544,9 @@ components:
         - TOOL_CALL_STARTED
         - TOOL_CALL_COMPLETED
         - TOOL_APPROVAL_REQUIRED
+        - TOOL_APPROVAL_DECIDED
+        - CHECKPOINT_CREATED
+        - ARTIFACT_SAVED
     AgentEvent:
       type: object
       required:
@@ -586,6 +748,168 @@ components:
               type: integer
             has_more:
               type: boolean
+    TaskStatusResult:
+      type: object
+      required:
+        - task_id
+        - status
+      properties:
+        task_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+    TaskStatusResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/TaskStatusResult"
+    ResumeTaskResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - task_id
+            - status
+            - resume_from_checkpoint_id
+          properties:
+            task_id:
+              type: string
+            status:
+              $ref: "#/components/schemas/TaskStatus"
+            resume_from_checkpoint_id:
+              type: string
+    DecisionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        comment:
+          type: string
+    ToolCallDecisionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - call_id
+            - approval_status
+            - tool_call_status
+            - task_status
+          properties:
+            call_id:
+              type: string
+            approval_status:
+              type: string
+            tool_call_status:
+              type: string
+            task_status:
+              $ref: "#/components/schemas/TaskStatus"
+    ToolCall:
+      type: object
+      properties:
+        call_id:
+          type: string
+        task_id:
+          type: string
+        tool_name:
+          type: string
+        status:
+          type: string
+        risk_level:
+          type: string
+        approval_status:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
+        error_code:
+          type: string
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Checkpoint:
+      type: object
+      properties:
+        checkpoint_id:
+          type: string
+        task_id:
+          type: string
+        state_version:
+          type: integer
+        event_offset:
+          type: integer
+        state_snapshot:
+          type: object
+          additionalProperties: true
+        reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Artifact:
+      type: object
+      properties:
+        artifact_id:
+          type: string
+        task_id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        storage_backend:
+          type: string
+        content_json:
+          type: object
+          additionalProperties: true
+        size_bytes:
+          type: integer
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ListToolCallsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ToolCall"
+    ListCheckpointsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Checkpoint"
+    ListArtifactsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Artifact"
     ErrorResponse:
       type: object
       required:

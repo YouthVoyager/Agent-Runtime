@@ -9,9 +9,9 @@ StableAgent 是一个以稳定性为核心的生产级通用 Agent 平台，支�
 | 服务 | 目录 | 默认端口 | 当前职责 |
 | --- | --- | ---: | --- |
 | API Service | `cmd/api-service` | 8080 | 用户 API 入口，承载任务创建、查询、timeline、SSE 和 React 静态前端 |
-| Runtime Worker | `cmd/runtime-worker` | 8081 | 后台执行进程，后续承载 step、checkpoint、cancel、resume |
-| Tool Gateway | `cmd/tool-gateway` | 8082 | 工具调用网关，当前提供 MVP 工具目录占位 |
-| LLM Gateway | `cmd/llm-gateway` | 8083 | 模型调用统一入口，后续承载路由、限流、重试和 token 统计 |
+| Runtime Worker | `cmd/runtime-worker` | 8081 | 后台执行进程，扫描 outbox，推进本地 workflow、checkpoint、cancel、resume |
+| Tool Gateway | `cmd/tool-gateway` | 8082（Docker 宿主 18082） | 工具调用网关，提供工具目录、风险识别、幂等、审批和 Mock 工具执行 |
+| LLM Gateway | `cmd/llm-gateway` | 8083 | 模型调用统一入口，当前提供可替换 Mock Provider、token 估算和 prompt version |
 
 ## 快速启动
 
@@ -33,6 +33,18 @@ make health
 
 Docker 镜像会在构建阶段生成并内置 `web-ui/dist`，因此通过 Compose 启动后可以直接访问 `http://localhost:8080/`。
 
+生成本地 admin JWT：
+
+```bash
+make jwt
+```
+
+执行本地端到端闭环验证：
+
+```bash
+make e2e-local
+```
+
 停止本地环境：
 
 ```bash
@@ -44,7 +56,7 @@ make docker-down
 ```bash
 curl http://localhost:8080/healthz
 curl http://localhost:8081/healthz
-curl http://localhost:8082/healthz
+curl http://localhost:18082/healthz
 curl http://localhost:8083/healthz
 ```
 
@@ -63,6 +75,8 @@ curl http://localhost:8083/healthz
 | `make migrate-up` | 执行数据库 up migration |
 | `make migrate-down` | 回滚最近一次 migration |
 | `make health` | 检查四个服务 health check |
+| `make jwt` | 生成本地 `tenant_local/admin_local` HS256 JWT |
+| `make e2e-local` | 验证普通任务、高风险审批、cancel 和 resume 闭环 |
 | `npm --prefix web-ui run build` | 构建 React timeline 静态文件 |
 
 ## 本地基础设施
@@ -90,4 +104,5 @@ curl http://localhost:8083/healthz
 | `docs/week-2-database-design.md` | 第二周数据库设计说明 |
 | `docs/week-3-task-api-technical-document.md` | 第三周 Task API 技术说明 |
 | `docs/week-4-event-timeline-technical-document.md` | 第四周 AgentEvent、Timeline、SSE 和前端原型技术说明 |
+| `docs/local-production-loop-technical-document.md` | 本地生产闭环、Mock LLM/Tool、审批、cancel/resume 和验证说明 |
 | `docs/stableagent-rename-technical-document.md` | StableAgent 项目改名技术说明 |

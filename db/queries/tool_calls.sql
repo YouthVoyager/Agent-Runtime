@@ -87,3 +87,21 @@ set approval_status = sqlc.arg(approval_status),
 where tenant_id = sqlc.arg(tenant_id)
   and call_id = sqlc.arg(call_id)
 returning *;
+
+-- name: UpdateToolCallStatusAndApproval :one
+update tool_calls
+set status = sqlc.arg(status),
+    approval_status = sqlc.arg(approval_status),
+    updated_at = now()
+where tenant_id = sqlc.arg(tenant_id)
+  and call_id = sqlc.arg(call_id)
+returning *;
+
+-- name: ListToolCallsByTaskStatus :many
+select *
+from tool_calls
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+  and status = sqlc.arg(status)
+order by created_at asc, call_id asc
+limit sqlc.arg(limit_rows);

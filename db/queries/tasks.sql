@@ -97,3 +97,43 @@ set status = 'FAILED',
 where tenant_id = sqlc.arg(tenant_id)
   and task_id = sqlc.arg(task_id)
 returning *;
+
+-- name: CreateTaskIdempotencyKey :exec
+insert into task_idempotency_keys (
+    tenant_id,
+    user_id,
+    client_request_id,
+    task_id
+) values (
+    sqlc.arg(tenant_id),
+    sqlc.arg(user_id),
+    sqlc.arg(client_request_id),
+    sqlc.arg(task_id)
+);
+
+-- name: GetTaskByClientRequestID :one
+select agent_tasks.*
+from task_idempotency_keys
+join agent_tasks
+  on agent_tasks.tenant_id = task_idempotency_keys.tenant_id
+ and agent_tasks.task_id = task_idempotency_keys.task_id
+where task_idempotency_keys.tenant_id = sqlc.arg(tenant_id)
+  and task_idempotency_keys.user_id = sqlc.arg(user_id)
+  and task_idempotency_keys.client_request_id = sqlc.arg(client_request_id)
+limit 1;
+
+-- name: UpdateAgentTaskStatusIfCurrent :one
+update agent_tasks
+set status = sqlc.arg(next_status),
+    updated_at = now()
+where tenant_id = sqlc.arg(tenant_id)
+  and task_id = sqlc.arg(task_id)
+  and status = sqlc.arg(current_status)
+returning *;
+
+-- name: ListRunnableAgentTasks :many
+select *
+from agent_tasks
+where status in ('QUEUED', 'CANCELING')
+order by updated_at asc, task_id asc
+limit sqlc.arg(limit_rows);

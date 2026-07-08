@@ -28,8 +28,9 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 
 	eventHub := eventapi.NewHub(eventapi.DefaultHubBuffer)
 	eventBus := redisinfra.NewEventBus(cfg.RedisAddr, logger)
+	cancelStore := redisinfra.NewCancelStore(cfg.RedisAddr)
 	eventService := eventapi.NewService(pool, eventHub, eventBus, logger)
-	taskService := taskapi.NewServiceWithEventNotifier(pool, eventService)
+	taskService := taskapi.NewServiceWithEventNotifierAndCancelStore(pool, eventService, cancelStore)
 
 	eventBusCtx, cancelEventBus := context.WithCancel(context.Background())
 	if eventBus != nil {
@@ -50,6 +51,9 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 		cancelEventBus()
 		if eventBus != nil {
 			_ = eventBus.Close()
+		}
+		if cancelStore != nil {
+			_ = cancelStore.Close()
 		}
 		pool.Close()
 		return nil
@@ -81,7 +85,18 @@ func registerTaskRoutes(router chi.Router, service taskService, events eventServ
 		r.Post("/api/v1/tasks", handler.createTask)
 		r.Get("/api/v1/tasks", handler.listTasks)
 		r.Get("/api/v1/tasks/{task_id}", handler.getTask)
+		r.Post("/api/v1/tasks/{task_id}/cancel", handler.cancelTask)
+		r.Post("/api/v1/tasks/{task_id}/resume", handler.resumeTask)
 		r.Get("/api/v1/tasks/{task_id}/events", eventHandler.listTaskEvents)
 		r.Get("/api/v1/tasks/{task_id}/events/stream", eventHandler.streamTaskEvents)
+		r.Get("/api/v1/tasks/{task_id}/tool-calls", handler.listToolCalls)
+		r.Get("/api/v1/tasks/{task_id}/checkpoints", handler.listCheckpoints)
+		r.Get("/api/v1/tasks/{task_id}/artifacts", handler.listArtifacts)
+		r.Post("/api/v1/tool-calls/{call_id}/approve", func(w http.ResponseWriter, r *http.Request) {
+			handler.decideToolCall(w, r, true)
+		})
+		r.Post("/api/v1/tool-calls/{call_id}/reject", func(w http.ResponseWriter, r *http.Request) {
+			handler.decideToolCall(w, r, false)
+		})
 	})
 }

@@ -26,6 +26,12 @@ type taskService interface {
 	CreateTask(ctx context.Context, input taskapi.CreateTaskInput) (taskapi.CreatedTask, error)
 	GetTask(ctx context.Context, input taskapi.GetTaskInput) (taskapi.TaskDetail, error)
 	ListTasks(ctx context.Context, input taskapi.ListTasksInput) (taskapi.TaskPage, error)
+	CancelTask(ctx context.Context, input taskapi.CancelTaskInput) (taskapi.TaskStatusResult, error)
+	ResumeTask(ctx context.Context, input taskapi.ResumeTaskInput) (taskapi.ResumeTaskResult, error)
+	DecideToolCall(ctx context.Context, input taskapi.DecideToolCallInput) (taskapi.ToolCallDecisionResult, error)
+	ListToolCalls(ctx context.Context, input taskapi.ListTaskChildrenInput) (taskapi.ToolCallPage, error)
+	ListCheckpoints(ctx context.Context, input taskapi.ListTaskChildrenInput) (taskapi.CheckpointPage, error)
+	ListArtifacts(ctx context.Context, input taskapi.ListTaskChildrenInput) (taskapi.ArtifactPage, error)
 }
 
 type taskHandler struct {
@@ -34,9 +40,14 @@ type taskHandler struct {
 }
 
 type createTaskRequest struct {
-	Goal        string            `json:"goal"`
-	Budget      domaintask.Budget `json:"budget"`
-	Constraints json.RawMessage   `json:"constraints"`
+	Goal            string            `json:"goal"`
+	ClientRequestID string            `json:"client_request_id"`
+	Budget          domaintask.Budget `json:"budget"`
+	Constraints     json.RawMessage   `json:"constraints"`
+}
+
+type decideToolCallRequest struct {
+	Comment string `json:"comment"`
 }
 
 // newTaskHandler 创建任务 HTTP handler。
@@ -58,13 +69,14 @@ func (h *taskHandler) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	task, err := h.service.CreateTask(r.Context(), taskapi.CreateTaskInput{
-		TenantID:    tenantID,
-		UserID:      user.UserID,
-		UserRole:    user.Role,
-		RequestID:   httpserver.RequestIDFromContext(r.Context()),
-		Goal:        req.Goal,
-		Budget:      req.Budget,
-		Constraints: req.Constraints,
+		TenantID:        tenantID,
+		UserID:          user.UserID,
+		UserRole:        user.Role,
+		RequestID:       httpserver.RequestIDFromContext(r.Context()),
+		ClientRequestID: req.ClientRequestID,
+		Goal:            req.Goal,
+		Budget:          req.Budget,
+		Constraints:     req.Constraints,
 	})
 	if err != nil {
 		httpserver.WriteError(w, r, err)
@@ -81,9 +93,8 @@ func (h *taskHandler) getTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	taskID := strings.TrimSpace(chi.URLParam(r, "task_id"))
-	if taskID == "" {
-		httpserver.WriteError(w, r, apperrors.New(apperrors.CodeInvalidArg, "task_id 不能为空"))
+	taskID, ok := taskIDFromRequest(w, r)
+	if !ok {
 		return
 	}
 
@@ -99,6 +110,140 @@ func (h *taskHandler) getTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpserver.WriteData(w, http.StatusOK, task)
+}
+
+// cancelTask 处理任务取消请求，幂等返回当前任务状态。
+func (h *taskHandler) cancelTask(w http.ResponseWriter, r *http.Request) {
+	user, tenantID, ok := principalFromRequest(w, r)
+	if !ok {
+		return
+	}
+	taskID, ok := taskIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.service.CancelTask(r.Context(), taskapi.CancelTaskInput{
+		TenantID: tenantID,
+		UserID:   user.UserID,
+		UserRole: user.Role,
+		TaskID:   taskID,
+	})
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	httpserver.WriteData(w, http.StatusOK, result)
+}
+
+// resumeTask 处理任务恢复请求，从最近 checkpoint 重新排队。
+func (h *taskHandler) resumeTask(w http.ResponseWriter, r *http.Request) {
+	user, tenantID, ok := principalFromRequest(w, r)
+	if !ok {
+		return
+	}
+	taskID, ok := taskIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.service.ResumeTask(r.Context(), taskapi.ResumeTaskInput{
+		TenantID: tenantID,
+		UserID:   user.UserID,
+		UserRole: user.Role,
+		TaskID:   taskID,
+	})
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	httpserver.WriteData(w, http.StatusOK, result)
+}
+
+// listToolCalls 处理任务工具调用列表请求。
+func (h *taskHandler) listToolCalls(w http.ResponseWriter, r *http.Request) {
+	h.listTaskChildren(w, r, func(ctx context.Context, input taskapi.ListTaskChildrenInput) (any, error) {
+		return h.service.ListToolCalls(ctx, input)
+	})
+}
+
+// listCheckpoints 处理任务 checkpoint 列表请求。
+func (h *taskHandler) listCheckpoints(w http.ResponseWriter, r *http.Request) {
+	h.listTaskChildren(w, r, func(ctx context.Context, input taskapi.ListTaskChildrenInput) (any, error) {
+		return h.service.ListCheckpoints(ctx, input)
+	})
+}
+
+// listArtifacts 处理任务 artifact 列表请求。
+func (h *taskHandler) listArtifacts(w http.ResponseWriter, r *http.Request) {
+	h.listTaskChildren(w, r, func(ctx context.Context, input taskapi.ListTaskChildrenInput) (any, error) {
+		return h.service.ListArtifacts(ctx, input)
+	})
+}
+
+// decideToolCall 处理工具调用审批通过或拒绝请求。
+func (h *taskHandler) decideToolCall(w http.ResponseWriter, r *http.Request, approve bool) {
+	user, tenantID, ok := principalFromRequest(w, r)
+	if !ok {
+		return
+	}
+	callID := strings.TrimSpace(chi.URLParam(r, "call_id"))
+	if callID == "" {
+		httpserver.WriteError(w, r, apperrors.New(apperrors.CodeInvalidArg, "call_id 不能为空"))
+		return
+	}
+	var req decideToolCallRequest
+	if err := decodeOptionalJSONBody(w, r, &req); err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	result, err := h.service.DecideToolCall(r.Context(), taskapi.DecideToolCallInput{
+		TenantID: tenantID,
+		UserID:   user.UserID,
+		UserRole: user.Role,
+		CallID:   callID,
+		Approve:  approve,
+		Comment:  req.Comment,
+	})
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	httpserver.WriteData(w, http.StatusOK, result)
+}
+
+// listTaskChildren 解析通用子资源分页参数并执行对应查询。
+func (h *taskHandler) listTaskChildren(w http.ResponseWriter, r *http.Request, list func(context.Context, taskapi.ListTaskChildrenInput) (any, error)) {
+	user, tenantID, ok := principalFromRequest(w, r)
+	if !ok {
+		return
+	}
+	taskID, ok := taskIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	query := r.URL.Query()
+	limit, err := parsePositiveIntQuery(query.Get("limit"), 50, "limit")
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	offset, err := parseNonNegativeIntQuery(query.Get("offset"), 0, "offset")
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	result, err := list(r.Context(), taskapi.ListTaskChildrenInput{
+		TenantID: tenantID,
+		UserID:   user.UserID,
+		UserRole: user.Role,
+		TaskID:   taskID,
+		Limit:    limit,
+		Offset:   offset,
+	})
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	httpserver.WriteData(w, http.StatusOK, result)
 }
 
 // listTasks 处理任务列表查询请求，并解析过滤和分页参数。
@@ -176,6 +321,14 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) error {
 	return nil
 }
 
+// decodeOptionalJSONBody 解码可选 JSON 请求体，空 body 按空对象处理。
+func decodeOptionalJSONBody(w http.ResponseWriter, r *http.Request, dst any) error {
+	if r.Body == nil || r.ContentLength == 0 {
+		return nil
+	}
+	return decodeJSONBody(w, r, dst)
+}
+
 // parsePositiveIntQuery 解析正整数查询参数，空值时返回默认值。
 func parsePositiveIntQuery(raw string, fallback int, name string) (int, error) {
 	raw = strings.TrimSpace(raw)
@@ -187,4 +340,27 @@ func parsePositiveIntQuery(raw string, fallback int, name string) (int, error) {
 		return 0, apperrors.New(apperrors.CodeInvalidArg, name+" 必须是正整数")
 	}
 	return value, nil
+}
+
+// parseNonNegativeIntQuery 解析非负整数查询参数，空值时返回默认值。
+func parseNonNegativeIntQuery(raw string, fallback int, name string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return 0, apperrors.New(apperrors.CodeInvalidArg, name+" 必须是非负整数")
+	}
+	return value, nil
+}
+
+// taskIDFromRequest 从路由参数中读取 task_id。
+func taskIDFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+	taskID := strings.TrimSpace(chi.URLParam(r, "task_id"))
+	if taskID == "" {
+		httpserver.WriteError(w, r, apperrors.New(apperrors.CodeInvalidArg, "task_id 不能为空"))
+		return "", false
+	}
+	return taskID, true
 }

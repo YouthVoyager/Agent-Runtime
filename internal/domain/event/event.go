@@ -23,6 +23,9 @@ const (
 	TypeToolCallStarted      Type = "TOOL_CALL_STARTED"
 	TypeToolCallCompleted    Type = "TOOL_CALL_COMPLETED"
 	TypeToolApprovalRequired Type = "TOOL_APPROVAL_REQUIRED"
+	TypeToolApprovalDecided  Type = "TOOL_APPROVAL_DECIDED"
+	TypeCheckpointCreated    Type = "CHECKPOINT_CREATED"
+	TypeArtifactSaved        Type = "ARTIFACT_SAVED"
 )
 
 type Metadata struct {
@@ -65,7 +68,10 @@ func ParseType(raw string) (Type, bool) {
 		TypeLLMCallCompleted,
 		TypeToolCallStarted,
 		TypeToolCallCompleted,
-		TypeToolApprovalRequired:
+		TypeToolApprovalRequired,
+		TypeToolApprovalDecided,
+		TypeCheckpointCreated,
+		TypeArtifactSaved:
 		return eventType, true
 	default:
 		return "", false

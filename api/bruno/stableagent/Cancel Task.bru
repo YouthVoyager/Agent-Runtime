@@ -1,0 +1,16 @@
+meta {
+  name: Cancel Task
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/api/v1/tasks/{{task_id}}/cancel
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{jwt_token}}
+  X-Request-ID: bruno-cancel-task
+}

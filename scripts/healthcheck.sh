@@ -8,9 +8,9 @@ check() {
   curl --fail --silent --show-error "${url}" >/dev/null
 }
 
-check "api-service" "http://localhost:8080/healthz"
-check "runtime-worker" "http://localhost:8081/healthz"
-check "tool-gateway" "http://localhost:8082/healthz"
-check "llm-gateway" "http://localhost:8083/healthz"
+check "api-service" "http://127.0.0.1:8080/healthz"
+check "runtime-worker" "http://127.0.0.1:8081/healthz"
+check "tool-gateway" "http://127.0.0.1:18082/healthz"
+check "llm-gateway" "http://127.0.0.1:8083/healthz"
 
 echo "四个服务 health check 均通过"

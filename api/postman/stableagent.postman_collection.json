@@ -17,6 +17,10 @@
       "value": "replace-with-task-id"
     },
     {
+      "key": "call_id",
+      "value": "replace-with-call-id"
+    },
+    {
       "key": "status",
       "value": "QUEUED"
     }
@@ -132,6 +136,119 @@
             "tasks",
             "{{task_id}}"
           ]
+        }
+      }
+    },
+    {
+      "name": "Cancel Task",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/tasks/{{task_id}}/cancel",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tasks",
+            "{{task_id}}",
+            "cancel"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Resume Task",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/tasks/{{task_id}}/resume",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tasks",
+            "{{task_id}}",
+            "resume"
+          ]
+        }
+      }
+    },
+    {
+      "name": "List Tool Calls",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/tasks/{{task_id}}/tool-calls",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tasks",
+            "{{task_id}}",
+            "tool-calls"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Approve Tool Call",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/tool-calls/{{call_id}}/approve",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tool-calls",
+            "{{call_id}}",
+            "approve"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"comment\": \"本地验证通过\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
         }
       }
     }

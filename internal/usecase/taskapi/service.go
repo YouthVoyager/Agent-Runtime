@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -31,20 +32,26 @@ type Service struct {
 	pool          *pgxpool.Pool
 	queries       *db.Queries
 	eventNotifier persistedEventNotifier
+	cancelStore   cancelFlagStore
 }
 
 type persistedEventNotifier interface {
 	NotifyPersisted(ctx context.Context, event domainevent.AgentEvent)
 }
 
+type cancelFlagStore interface {
+	Set(ctx context.Context, taskID string) error
+}
+
 type CreateTaskInput struct {
-	TenantID    string
-	UserID      string
-	UserRole    string
-	RequestID   string
-	Goal        string
-	Budget      domaintask.Budget
-	Constraints json.RawMessage
+	TenantID        string
+	UserID          string
+	UserRole        string
+	RequestID       string
+	ClientRequestID string
+	Goal            string
+	Budget          domaintask.Budget
+	Constraints     json.RawMessage
 }
 
 type CreatedTask struct {
@@ -112,10 +119,16 @@ func NewService(pool *pgxpool.Pool) *Service {
 
 // NewServiceWithEventNotifier 创建带事件推送通知能力的任务 API 用例服务。
 func NewServiceWithEventNotifier(pool *pgxpool.Pool, notifier persistedEventNotifier) *Service {
+	return NewServiceWithEventNotifierAndCancelStore(pool, notifier, nil)
+}
+
+// NewServiceWithEventNotifierAndCancelStore 创建带事件推送和取消标记能力的任务 API 用例服务。
+func NewServiceWithEventNotifierAndCancelStore(pool *pgxpool.Pool, notifier persistedEventNotifier, cancelStore cancelFlagStore) *Service {
 	return &Service{
 		pool:          pool,
 		queries:       db.New(pool),
 		eventNotifier: notifier,
+		cancelStore:   cancelStore,
 	}
 }
 
@@ -127,6 +140,20 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 	}
 	if err := domaintask.ValidateBudget(input.Budget); err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeInvalidArg, err.Error(), err)
+	}
+	clientRequestID := strings.TrimSpace(input.ClientRequestID)
+	if clientRequestID != "" {
+		task, err := s.getTaskByClientRequestID(ctx, input.TenantID, input.UserID, clientRequestID)
+		if err == nil {
+			return CreatedTask{
+				TaskID:    task.TaskID,
+				Status:    domaintask.StatusForAPI(string(task.Status)),
+				CreatedAt: pgTime(task.CreatedAt),
+			}, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return CreatedTask{}, mapPostgresReadError(err)
+		}
 	}
 	constraints, err := domaintask.NormalizeJSONObject(input.Constraints)
 	if err != nil {
@@ -245,6 +272,23 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 	}); err != nil {
 		return CreatedTask{}, mapPostgresWriteError(err)
 	}
+	if clientRequestID != "" {
+		inserted, err := s.insertTaskIdempotencyKey(ctx, tx, input.TenantID, input.UserID, clientRequestID, taskID)
+		if err != nil {
+			return CreatedTask{}, mapPostgresWriteError(err)
+		}
+		if !inserted {
+			existing, readErr := s.getTaskByClientRequestID(ctx, input.TenantID, input.UserID, clientRequestID)
+			if readErr != nil {
+				return CreatedTask{}, apperrors.Wrap(apperrors.CodeConflict, "client_request_id 已存在但任务暂不可读", readErr)
+			}
+			return CreatedTask{
+				TaskID:    existing.TaskID,
+				Status:    domaintask.StatusForAPI(string(existing.Status)),
+				CreatedAt: pgTime(existing.CreatedAt),
+			}, nil
+		}
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return CreatedTask{}, apperrors.Wrap(apperrors.CodeUnavailable, "提交任务创建事务失败", err)
@@ -259,6 +303,51 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 		Status:    domaintask.StatusForAPI(string(task.Status)),
 		CreatedAt: pgTime(task.CreatedAt),
 	}, nil
+}
+
+// getTaskByClientRequestID 根据客户端幂等键查询已创建任务。
+func (s *Service) getTaskByClientRequestID(ctx context.Context, tenantID string, userID string, clientRequestID string) (db.AgentTask, error) {
+	row := s.pool.QueryRow(ctx, `
+select agent_tasks.task_id, agent_tasks.tenant_id, agent_tasks.user_id, agent_tasks.goal, agent_tasks.status,
+       agent_tasks.budget, agent_tasks.budget_usage, agent_tasks.workflow_id, agent_tasks.trace_id,
+       agent_tasks.last_error_code, agent_tasks.last_error_message, agent_tasks.created_at, agent_tasks.updated_at
+from task_idempotency_keys
+join agent_tasks
+  on agent_tasks.tenant_id = task_idempotency_keys.tenant_id
+ and agent_tasks.task_id = task_idempotency_keys.task_id
+where task_idempotency_keys.tenant_id = $1
+  and task_idempotency_keys.user_id = $2
+  and task_idempotency_keys.client_request_id = $3
+limit 1`, tenantID, userID, clientRequestID)
+	var task db.AgentTask
+	err := row.Scan(
+		&task.TaskID,
+		&task.TenantID,
+		&task.UserID,
+		&task.Goal,
+		&task.Status,
+		&task.Budget,
+		&task.BudgetUsage,
+		&task.WorkflowID,
+		&task.TraceID,
+		&task.LastErrorCode,
+		&task.LastErrorMessage,
+		&task.CreatedAt,
+		&task.UpdatedAt,
+	)
+	return task, err
+}
+
+// insertTaskIdempotencyKey 在事务内保存客户端幂等键。
+func (s *Service) insertTaskIdempotencyKey(ctx context.Context, tx pgx.Tx, tenantID string, userID string, clientRequestID string, taskID string) (bool, error) {
+	tag, err := tx.Exec(ctx, `
+insert into task_idempotency_keys (tenant_id, user_id, client_request_id, task_id)
+values ($1, $2, $3, $4)
+on conflict (tenant_id, user_id, client_request_id) do nothing`, tenantID, userID, clientRequestID, taskID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // eventFromCreatedRow 将创建任务事务中的事件记录转换为推送事件。

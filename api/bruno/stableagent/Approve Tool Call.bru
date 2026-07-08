@@ -1,0 +1,23 @@
+meta {
+  name: Approve Tool Call
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{base_url}}/api/v1/tool-calls/{{call_id}}/approve
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{jwt_token}}
+  Content-Type: application/json
+  X-Request-ID: bruno-approve-tool-call
+}
+
+body:json {
+  {
+    "comment": "本地验证通过"
+  }
+}

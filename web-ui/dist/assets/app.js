@@ -3,7 +3,6 @@ import { createRoot } from 'https://esm.sh/react-dom@19.2.3/client';
 
 const h = React.createElement;
 const TOKEN_STORAGE_KEY = 'stableagent_jwt';
-const LEGACY_TOKEN_STORAGE_KEY = 'agent_runtime_jwt';
 
 const DEFAULT_BUDGET = {
   max_steps: 50,
@@ -13,45 +12,63 @@ const DEFAULT_BUDGET = {
 };
 
 const EVENT_META = {
-  TASK_CREATED: { label: '任务已创建', icon: '●', tone: 'blue' },
+  TASK_CREATED: { label: '任务已创建', icon: '+', tone: 'blue' },
+  TASK_STARTED: { label: '任务开始', icon: '▶', tone: 'amber' },
   STEP_STARTED: { label: '步骤开始', icon: '▶', tone: 'amber' },
-  STEP_COMPLETED: { label: '步骤完成', icon: '✓', tone: 'green' },
+  LLM_CALL_COMPLETED: { label: '模型完成', icon: '#', tone: 'blue' },
+  TOOL_APPROVAL_REQUIRED: { label: '等待审批', icon: '!', tone: 'amber' },
+  TOOL_APPROVAL_DECIDED: { label: '审批完成', icon: '✓', tone: 'green' },
+  TOOL_CALL_COMPLETED: { label: '工具完成', icon: '✓', tone: 'green' },
+  CHECKPOINT_CREATED: { label: 'Checkpoint', icon: '◇', tone: 'blue' },
+  ARTIFACT_SAVED: { label: '产物保存', icon: '◆', tone: 'green' },
   TASK_COMPLETED: { label: '任务完成', icon: '✓', tone: 'green' },
   TASK_FAILED: { label: '任务失败', icon: '!', tone: 'red' },
+  TASK_CANCELLED: { label: '任务取消', icon: '×', tone: 'red' },
 };
 
-// App 渲染任务创建和 timeline 实时查看工作台。
+// App 渲染 StableAgent 本地生产闭环工作台。
 function App() {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY) || '');
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || '');
+  const [goal, setGoal] = useState('生成 StableAgent 本地生产闭环报告');
   const [taskId, setTaskId] = useState('');
-  const [goal, setGoal] = useState('分析需求文档并生成生产级 Go 技术方案');
+  const [tasks, setTasks] = useState([]);
+  const [task, setTask] = useState(null);
   const [events, setEvents] = useState([]);
+  const [toolCalls, setToolCalls] = useState([]);
+  const [checkpoints, setCheckpoints] = useState([]);
+  const [artifacts, setArtifacts] = useState([]);
+  const [activeTab, setActiveTab] = useState('timeline');
   const [connection, setConnection] = useState('idle');
   const [error, setError] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const abortRef = useRef(null);
   const reconnectRef = useRef(null);
   const lastEventIdRef = useRef(0);
 
   useEffect(() => {
     localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
   }, [token]);
 
   useEffect(() => {
-    let cancelled = false;
+    if (token) {
+      loadTasks();
+    }
+  }, [token]);
+
+  useEffect(() => {
     stopStream();
     lastEventIdRef.current = 0;
     setEvents([]);
+    setTask(null);
+    setToolCalls([]);
+    setCheckpoints([]);
+    setArtifacts([]);
     if (!token || !taskId) {
       setConnection('idle');
-      return () => {
-        cancelled = true;
-        stopStream();
-      };
+      return () => stopStream();
     }
-    loadTimeline(cancelled).then(() => {
+    let cancelled = false;
+    loadTaskData(cancelled).then(() => {
       if (!cancelled) {
         connectStream();
       }
@@ -62,66 +79,123 @@ function App() {
     };
   }, [token, taskId]);
 
-  // createTask 调用后端创建任务接口，并切换到新任务 timeline。
+  // loadTasks 拉取当前用户可见任务列表。
+  async function loadTasks() {
+    if (!token) {
+      return;
+    }
+    try {
+      const data = await apiFetch('/api/v1/tasks?page_size=20', { token });
+      setTasks(data.items || []);
+      if (!taskId && data.items?.[0]?.task_id) {
+        setTaskId(data.items[0].task_id);
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  // createTask 创建任务并切换到新任务详情。
   async function createTask(event) {
     event.preventDefault();
     if (!token || !goal.trim()) {
       setError('JWT 和目标不能为空');
       return;
     }
-    setIsCreating(true);
+    setBusy(true);
     setError('');
     try {
-      const response = await fetch('/api/v1/tasks', {
+      const data = await apiFetch('/api/v1/tasks', {
+        token,
         method: 'POST',
-        headers: {
-          ...authHeaders(token),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+        body: {
           goal: goal.trim(),
+          client_request_id: `ui_${Date.now()}`,
           budget: DEFAULT_BUDGET,
-          constraints: {},
-        }),
+          constraints: { language: 'zh-CN' },
+        },
       });
-      const body = await readAPIResponse(response);
-      setTaskId(body.task_id);
+      setTaskId(data.task_id);
+      await loadTasks();
     } catch (err) {
       setError(err.message);
     } finally {
-      setIsCreating(false);
+      setBusy(false);
     }
   }
 
-  // loadTimeline 从数据库按 event_id 顺序拉取完整初始 timeline。
-  async function loadTimeline(cancelled) {
-    setIsLoading(true);
+  // loadTaskData 拉取任务详情和关联资源。
+  async function loadTaskData(cancelled) {
     setError('');
     try {
-      let afterEventId = 0;
-      let hasMore = true;
-      while (hasMore && !cancelled) {
-        const response = await fetch(`/api/v1/tasks/${encodeURIComponent(taskId)}/events?after_event_id=${afterEventId}&limit=100`, {
-          headers: authHeaders(token),
-        });
-        const page = await readAPIResponse(response);
-        setEvents((current) => mergeEvents(current, page.items || []));
-        afterEventId = page.next_after_event_id || afterEventId;
-        lastEventIdRef.current = Math.max(lastEventIdRef.current, afterEventId);
-        hasMore = Boolean(page.has_more);
+      const [detail, timeline, calls, ckpts, files] = await Promise.all([
+        apiFetch(`/api/v1/tasks/${encodeURIComponent(taskId)}`, { token }),
+        apiFetch(`/api/v1/tasks/${encodeURIComponent(taskId)}/events?limit=100`, { token }),
+        apiFetch(`/api/v1/tasks/${encodeURIComponent(taskId)}/tool-calls`, { token }),
+        apiFetch(`/api/v1/tasks/${encodeURIComponent(taskId)}/checkpoints`, { token }),
+        apiFetch(`/api/v1/tasks/${encodeURIComponent(taskId)}/artifacts`, { token }),
+      ]);
+      if (cancelled) {
+        return;
       }
+      setTask(detail);
+      setEvents(timeline.items || []);
+      setToolCalls(calls.items || []);
+      setCheckpoints(ckpts.items || []);
+      setArtifacts(files.items || []);
+      lastEventIdRef.current = timeline.next_after_event_id || 0;
     } catch (err) {
       if (!cancelled) {
         setError(err.message);
       }
-    } finally {
-      if (!cancelled) {
-        setIsLoading(false);
-      }
     }
   }
 
-  // connectStream 使用 fetch 建立可携带 Authorization header 的 SSE 连接。
+  // refreshSelected 刷新当前任务的全部详情。
+  async function refreshSelected() {
+    if (!taskId) {
+      return;
+    }
+    await loadTaskData(false);
+    await loadTasks();
+  }
+
+  // mutateTask 调用 cancel/resume 等任务状态接口。
+  async function mutateTask(action) {
+    if (!taskId) {
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/api/v1/tasks/${encodeURIComponent(taskId)}/${action}`, { token, method: 'POST' });
+      await refreshSelected();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // decideToolCall 处理工具审批通过或拒绝。
+  async function decideToolCall(callId, decision) {
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/api/v1/tool-calls/${encodeURIComponent(callId)}/${decision}`, {
+        token,
+        method: 'POST',
+        body: { comment: decision === 'approve' ? '本地验证通过' : '本地验证拒绝' },
+      });
+      await refreshSelected();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // connectStream 使用 fetch 建立带 Authorization header 的 SSE 连接。
   async function connectStream() {
     if (!token || !taskId) {
       return;
@@ -142,35 +216,30 @@ function App() {
         await readAPIResponse(response);
       }
       setConnection('connected');
-      await readSSE(response, handleStreamEvent);
+      await readSSE(response, (event) => {
+        lastEventIdRef.current = Math.max(lastEventIdRef.current, Number(event.event_id || 0));
+        setEvents((current) => mergeEvents(current, [event]));
+        refreshSelected();
+      });
       if (!controller.signal.aborted) {
         scheduleReconnect();
       }
     } catch (err) {
-      if (controller.signal.aborted) {
-        return;
+      if (!controller.signal.aborted) {
+        setError(err.message);
+        scheduleReconnect();
       }
-      setError(err.message);
-      scheduleReconnect();
     }
   }
 
-  // handleStreamEvent 合并实时事件，并维护下一次重连游标。
-  function handleStreamEvent(event) {
-    lastEventIdRef.current = Math.max(lastEventIdRef.current, Number(event.event_id || 0));
-    setEvents((current) => mergeEvents(current, [event]));
-  }
-
-  // scheduleReconnect 在 SSE 断线后延迟重连。
+  // scheduleReconnect 在事件流断开后延迟重连。
   function scheduleReconnect() {
     setConnection('reconnecting');
     clearTimeout(reconnectRef.current);
-    reconnectRef.current = setTimeout(() => {
-      connectStream();
-    }, 1500);
+    reconnectRef.current = setTimeout(() => connectStream(), 1500);
   }
 
-  // stopStream 关闭当前 SSE 请求和待执行重连定时器。
+  // stopStream 关闭当前事件流。
   function stopStream() {
     clearTimeout(reconnectRef.current);
     reconnectRef.current = null;
@@ -183,86 +252,102 @@ function App() {
   return h(
     'main',
     { className: 'app-shell' },
-    h(
-      'aside',
-      { className: 'sidebar' },
-      h(
-        'div',
-        { className: 'brand-row' },
-        h(Icon, { name: '◉' }),
-        h('div', null, h('h1', null, 'StableAgent'), h('span', null, '生产级通用 Agent 执行平台')),
-      ),
-      h(
-        'form',
-        { className: 'control-panel', onSubmit: createTask },
-        h(
-          'label',
-          null,
-          h('span', null, h(Icon, { name: '◆' }), 'JWT'),
-          h('textarea', {
-            value: token,
-            onChange: (event) => setToken(event.target.value),
-            rows: 5,
-          }),
-        ),
-        h(
-          'label',
-          null,
-          h('span', null, h(Icon, { name: '#' }), '任务 ID'),
-          h('input', {
-            value: taskId,
-            onChange: (event) => setTaskId(event.target.value.trim()),
-          }),
-        ),
-        h(
-          'label',
-          null,
-          h('span', null, h(Icon, { name: '↗' }), '目标'),
-          h('textarea', {
-            value: goal,
-            onChange: (event) => setGoal(event.target.value),
-            rows: 4,
-          }),
-        ),
-        h(
-          'button',
-          { type: 'submit', disabled: isCreating || !token },
-          h(Icon, { name: isCreating ? '○' : '+' , spin: isCreating }),
-          '创建任务',
-        ),
-      ),
-    ),
+    h(Sidebar, { token, setToken, goal, setGoal, createTask, busy, tasks, taskId, setTaskId, loadTasks }),
     h(
       'section',
-      { className: 'timeline-surface' },
+      { className: 'workspace' },
       h(
         'header',
-        { className: 'timeline-header' },
-        h('div', null, h('p', null, 'Timeline'), h('h2', null, taskId || '未选择任务')),
+        { className: 'workspace-header' },
+        h('div', null, h('p', null, 'Task'), h('h2', null, taskId || '未选择任务')),
         h(
           'div',
-          { className: `connection ${connection}` },
-          h(Icon, { name: connection === 'connected' ? '◉' : '↻', spin: connection === 'connecting' || connection === 'reconnecting' }),
-          connectionLabel(connection),
+          { className: 'actions-row' },
+          h('span', { className: `status-pill ${task?.status || 'idle'}` }, task?.status || 'IDLE'),
+          h('button', { type: 'button', onClick: () => mutateTask('cancel'), disabled: busy || !taskId }, h(Icon, { name: '×' }), '取消'),
+          h('button', { type: 'button', onClick: () => mutateTask('resume'), disabled: busy || !taskId }, h(Icon, { name: '↻' }), '恢复'),
+          h('button', { type: 'button', onClick: refreshSelected, disabled: busy || !taskId }, h(Icon, { name: '↺', spin: busy }), '刷新'),
         ),
       ),
-      error
-        ? h('div', { className: 'error-strip' }, h(Icon, { name: '!' }), h('span', null, error))
-        : null,
-      h(
-        'div',
-        { className: 'timeline-list' },
-        isLoading ? h('div', { className: 'empty-state' }, h(Icon, { name: '○', spin: true }), h('span', null, '加载中')) : null,
-        !isLoading && events.length === 0
-          ? h('div', { className: 'empty-state' }, h(Icon, { name: '●' }), h('span', null, '暂无事件'))
-          : null,
-        events.map((event) => h(TimelineEvent, { key: event.event_id, event })),
+      error ? h('div', { className: 'error-strip' }, h(Icon, { name: '!' }), h('span', null, error)) : null,
+      task ? h(TaskSummary, { task, connection }) : null,
+      h(Tabs, { activeTab, setActiveTab }),
+      activeTab === 'timeline' ? h(Timeline, { events }) : null,
+      activeTab === 'approvals' ? h(ToolCalls, { toolCalls, decideToolCall, busy }) : null,
+      activeTab === 'checkpoints' ? h(ResourceList, { items: checkpoints, title: 'Checkpoints' }) : null,
+      activeTab === 'artifacts' ? h(ResourceList, { items: artifacts, title: 'Artifacts' }) : null,
+    ),
+  );
+}
+
+// Sidebar 渲染左侧创建任务和任务列表。
+function Sidebar({ token, setToken, goal, setGoal, createTask, busy, tasks, taskId, setTaskId, loadTasks }) {
+  return h(
+    'aside',
+    { className: 'sidebar' },
+    h('div', { className: 'brand-row' }, h(Icon, { name: '◉' }), h('div', null, h('h1', null, 'StableAgent'), h('span', null, '生产级通用 Agent 执行平台'))),
+    h(
+      'form',
+      { className: 'control-panel', onSubmit: createTask },
+      h('label', null, h('span', null, h(Icon, { name: '◆' }), 'JWT'), h('textarea', { value: token, onChange: (event) => setToken(event.target.value), rows: 5 })),
+      h('label', null, h('span', null, h(Icon, { name: '#' }), '目标'), h('textarea', { value: goal, onChange: (event) => setGoal(event.target.value), rows: 4 })),
+      h('button', { type: 'submit', disabled: busy || !token }, h(Icon, { name: busy ? '○' : '+', spin: busy }), '创建任务'),
+    ),
+    h(
+      'div',
+      { className: 'task-list-header' },
+      h('strong', null, '任务列表'),
+      h('button', { type: 'button', onClick: loadTasks }, h(Icon, { name: '↺' })),
+    ),
+    h(
+      'div',
+      { className: 'task-list' },
+      tasks.map((item) =>
+        h(
+          'button',
+          { key: item.task_id, type: 'button', className: item.task_id === taskId ? 'active' : '', onClick: () => setTaskId(item.task_id) },
+          h('span', null, item.goal),
+          h('code', null, item.status),
+        ),
       ),
     ),
   );
 }
 
-// TimelineEvent 渲染单条 AgentEvent。
+// TaskSummary 渲染任务概要和连接状态。
+function TaskSummary({ task, connection }) {
+  return h(
+    'div',
+    { className: 'summary-grid' },
+    h(SummaryItem, { label: '当前步骤', value: task.current_step }),
+    h(SummaryItem, { label: 'Trace', value: task.trace_id || '-' }),
+    h(SummaryItem, { label: '已用 Steps', value: task.budget_usage?.used_steps ?? 0 }),
+    h(SummaryItem, { label: 'SSE', value: connectionLabel(connection), tone: connection }),
+  );
+}
+
+// SummaryItem 渲染一个概要指标。
+function SummaryItem({ label, value, tone }) {
+  return h('div', { className: `summary-item ${tone || ''}` }, h('span', null, label), h('strong', null, String(value)));
+}
+
+// Tabs 渲染资源视图切换。
+function Tabs({ activeTab, setActiveTab }) {
+  const tabs = [
+    ['timeline', 'Timeline'],
+    ['approvals', 'Tool Calls'],
+    ['checkpoints', 'Checkpoints'],
+    ['artifacts', 'Artifacts'],
+  ];
+  return h('nav', { className: 'tabs' }, tabs.map(([id, label]) => h('button', { key: id, type: 'button', className: activeTab === id ? 'active' : '', onClick: () => setActiveTab(id) }, label)));
+}
+
+// Timeline 渲染事件时间线。
+function Timeline({ events }) {
+  return h('div', { className: 'timeline-list' }, events.length === 0 ? h('div', { className: 'empty-state' }, h(Icon, { name: '●' }), h('span', null, '暂无事件')) : events.map((event) => h(TimelineEvent, { key: event.event_id, event })));
+}
+
+// TimelineEvent 渲染单条事件。
 function TimelineEvent({ event }) {
   const meta = EVENT_META[event.type] || { label: event.type, icon: '●', tone: 'neutral' };
   return h(
@@ -272,120 +357,121 @@ function TimelineEvent({ event }) {
     h(
       'div',
       { className: 'event-body' },
+      h('div', { className: 'event-title-row' }, h('div', null, h('strong', null, meta.label), h('code', null, event.type)), h('time', null, formatTime(event.created_at))),
+      h('div', { className: 'event-fields' }, h('span', null, `event_id=${event.event_id}`), event.trace_id ? h('span', null, `trace=${event.trace_id}`) : null),
+      h(JSONDetails, { value: { input: event.input, output: event.output, metadata: event.metadata } }),
+    ),
+  );
+}
+
+// ToolCalls 渲染工具调用和审批按钮。
+function ToolCalls({ toolCalls, decideToolCall, busy }) {
+  return h(
+    'div',
+    { className: 'resource-list' },
+    toolCalls.length === 0 ? h('div', { className: 'empty-state' }, h(Icon, { name: '●' }), h('span', null, '暂无工具调用')) : null,
+    toolCalls.map((call) =>
       h(
-        'div',
-        { className: 'event-title-row' },
-        h('div', null, h('strong', null, meta.label), h('code', null, event.type)),
-        h('time', null, formatTime(event.created_at)),
-      ),
-      h(
-        'div',
-        { className: 'event-fields' },
-        h('span', null, `event_id: ${event.event_id}`),
-        event.trace_id ? h('span', null, `trace_id: ${event.trace_id}`) : null,
-        event.span_id ? h('span', null, `span_id: ${event.span_id}`) : null,
-      ),
-      h(
-        'details',
-        null,
-        h('summary', null, 'payload'),
-        h('pre', null, formatJSON({ input: event.input, output: event.output, metadata: event.metadata })),
+        'article',
+        { key: call.call_id, className: 'resource-row' },
+        h('div', null, h('strong', null, call.tool_name), h('code', null, `${call.status} · ${call.risk_level} · ${call.approval_status}`)),
+        call.approval_status === 'PENDING'
+          ? h('div', { className: 'row-actions' }, h('button', { type: 'button', disabled: busy, onClick: () => decideToolCall(call.call_id, 'approve') }, '通过'), h('button', { type: 'button', disabled: busy, onClick: () => decideToolCall(call.call_id, 'reject') }, '拒绝'))
+          : null,
+        h(JSONDetails, { value: call }),
       ),
     ),
   );
 }
 
+// ResourceList 渲染 checkpoint 和 artifact 通用列表。
+function ResourceList({ items, title }) {
+  return h('div', { className: 'resource-list' }, items.length === 0 ? h('div', { className: 'empty-state' }, h(Icon, { name: '●' }), h('span', null, `${title} 暂无数据`)) : items.map((item, index) => h('article', { key: item.checkpoint_id || item.artifact_id || index, className: 'resource-row' }, h('div', null, h('strong', null, item.reason || item.name || title), h('code', null, item.checkpoint_id || item.artifact_id || 'resource')), h(JSONDetails, { value: item }))));
+}
+
+// JSONDetails 渲染可展开 JSON。
+function JSONDetails({ value }) {
+  return h('details', null, h('summary', null, 'JSON'), h('pre', null, JSON.stringify(value, null, 2)));
+}
+
 // Icon 渲染轻量符号图标。
-function Icon({ name, spin = false }) {
-  return h('span', { className: spin ? 'icon spin' : 'icon', 'aria-hidden': 'true' }, name);
+function Icon({ name, spin }) {
+  return h('span', { className: `icon ${spin ? 'spin' : ''}`, 'aria-hidden': 'true' }, name);
 }
 
-// authHeaders 生成后端 API 鉴权请求头。
-function authHeaders(token) {
-  return {
-    Authorization: `Bearer ${token}`,
-  };
+// apiFetch 调用统一后端 API 并返回 data。
+async function apiFetch(path, { token, method = 'GET', body } = {}) {
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...authHeaders(token),
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return readAPIResponse(response);
 }
 
-// readAPIResponse 读取统一 API 响应，错误响应会抛出业务消息。
+// readAPIResponse 解析统一成功或错误响应。
 async function readAPIResponse(response) {
-  let body = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    const message = body?.error?.message || response.statusText || `HTTP ${response.status}`;
-    throw new Error(message);
+    throw new Error(payload.error?.message || `HTTP ${response.status}`);
   }
-  return body?.data ?? body;
+  return payload.data;
 }
 
-// readSSE 解析 fetch 返回的 text/event-stream。
+// authHeaders 生成鉴权请求头。
+function authHeaders(token) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// readSSE 从 fetch Response 中解析 SSE 事件。
 async function readSSE(response, onEvent) {
-  if (!response.body) {
-    throw new Error('SSE 响应没有可读取内容');
-  }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   while (true) {
-    const { value, done } = await reader.read();
+    const { done, value } = await reader.read();
     if (done) {
-      break;
+      return;
     }
     buffer += decoder.decode(value, { stream: true });
-    let splitIndex = buffer.indexOf('\n\n');
-    while (splitIndex >= 0) {
-      const rawBlock = buffer.slice(0, splitIndex);
-      buffer = buffer.slice(splitIndex + 2);
-      parseSSEBlock(rawBlock, onEvent);
-      splitIndex = buffer.indexOf('\n\n');
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() || '';
+    for (const frame of frames) {
+      const event = parseSSEFrame(frame);
+      if (event) {
+        onEvent(event);
+      }
     }
   }
 }
 
-// parseSSEBlock 解析单个 SSE block，仅处理 agent_event。
-function parseSSEBlock(block, onEvent) {
-  const lines = block.replaceAll('\r', '').split('\n');
-  let eventName = 'message';
-  const dataLines = [];
-  for (const line of lines) {
-    if (line.startsWith(':')) {
-      continue;
-    }
-    if (line.startsWith('event:')) {
-      eventName = line.slice(6).trim();
-      continue;
-    }
-    if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trimStart());
-    }
+// parseSSEFrame 解析单个 SSE frame。
+function parseSSEFrame(frame) {
+  const dataLine = frame.split('\n').find((line) => line.startsWith('data:'));
+  if (!dataLine) {
+    return null;
   }
-  if (eventName !== 'agent_event' || dataLines.length === 0) {
-    return;
-  }
-  onEvent(JSON.parse(dataLines.join('\n')));
+  return JSON.parse(dataLine.slice(5).trim());
 }
 
-// mergeEvents 按 event_id 去重并保持升序。
+// mergeEvents 按 event_id 合并事件列表。
 function mergeEvents(current, incoming) {
-  const byID = new Map();
-  for (const event of current) {
-    byID.set(Number(event.event_id), event);
-  }
+  const map = new Map(current.map((event) => [event.event_id, event]));
   for (const event of incoming) {
-    byID.set(Number(event.event_id), event);
+    map.set(event.event_id, event);
   }
-  return [...byID.values()].sort((left, right) => Number(left.event_id) - Number(right.event_id));
+  return Array.from(map.values()).sort((a, b) => a.event_id - b.event_id);
 }
 
-// connectionLabel 返回连接状态展示文本。
+// connectionLabel 返回 SSE 连接状态文案。
 function connectionLabel(connection) {
   switch (connection) {
     case 'connected':
-      return '实时连接';
+      return '已连接';
     case 'connecting':
       return '连接中';
     case 'reconnecting':
@@ -395,23 +481,12 @@ function connectionLabel(connection) {
   }
 }
 
-// formatTime 格式化事件创建时间。
+// formatTime 格式化时间显示。
 function formatTime(value) {
   if (!value) {
-    return '';
+    return '-';
   }
-  return new Intl.DateTimeFormat('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value));
 }
 
-// formatJSON 以稳定缩进展示事件 payload。
-function formatJSON(value) {
-  return JSON.stringify(value, null, 2);
-}
-
-createRoot(document.getElementById('root')).render(h(React.StrictMode, null, h(App)));
+createRoot(document.getElementById('root')).render(h(App));

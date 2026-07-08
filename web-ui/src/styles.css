@@ -126,6 +126,7 @@ button {
   opacity: 0.65;
 }
 
+.workspace,
 .timeline-surface {
   display: flex;
   flex-direction: column;
@@ -133,6 +134,7 @@ button {
   padding: 24px;
 }
 
+.workspace-header,
 .timeline-header {
   display: flex;
   align-items: center;
@@ -142,6 +144,7 @@ button {
   border-bottom: 1px solid #d7dde5;
 }
 
+.workspace-header p,
 .timeline-header p {
   margin: 0 0 4px;
   color: #65758b;
@@ -150,12 +153,185 @@ button {
   text-transform: uppercase;
 }
 
+.workspace-header h2,
 .timeline-header h2 {
   max-width: min(68vw, 880px);
   margin: 0;
   overflow-wrap: anywhere;
   font-size: 24px;
   line-height: 1.2;
+}
+
+.actions-row,
+.row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions-row button,
+.row-actions button,
+.tabs button,
+.task-list-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid #c8d1dc;
+  border-radius: 8px;
+  padding: 0 11px;
+  color: #18202a;
+  background: #ffffff;
+  font-weight: 750;
+}
+
+.actions-row button:disabled,
+.row-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid #c8d1dc;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #475569;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.status-pill.QUEUED,
+.status-pill.RUNNING,
+.summary-item.connected {
+  border-color: #8bb8f4;
+  color: #1d4ed8;
+  background: #e8f1ff;
+}
+
+.status-pill.WAITING_APPROVAL,
+.summary-item.connecting,
+.summary-item.reconnecting {
+  border-color: #e2bc62;
+  color: #896112;
+  background: #fff7df;
+}
+
+.status-pill.SUCCEEDED {
+  border-color: #8bd2bc;
+  color: #13795b;
+  background: #eefbf5;
+}
+
+.status-pill.FAILED,
+.status-pill.CANCELED {
+  border-color: #eda6a6;
+  color: #991b1b;
+  background: #fff1f1;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.summary-item {
+  min-width: 0;
+  border: 1px solid #d7dde5;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.summary-item span {
+  display: block;
+  margin-bottom: 6px;
+  color: #65758b;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.summary-item strong {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #18202a;
+  font-size: 14px;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid #d7dde5;
+  padding-bottom: 12px;
+}
+
+.tabs button.active {
+  border-color: #39b9a8;
+  color: #0e766c;
+  background: #e7fbf7;
+}
+
+.task-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.task-list-header strong {
+  color: #dbe7f3;
+}
+
+.task-list {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.task-list button {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #38516f;
+  border-radius: 8px;
+  padding: 10px;
+  color: #e5eef9;
+  background: #0f1a2f;
+  text-align: left;
+}
+
+.task-list button.active {
+  border-color: #39b9a8;
+  box-shadow: 0 0 0 3px rgba(57, 185, 168, 0.16);
+}
+
+.task-list span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-list code {
+  width: fit-content;
+  border-radius: 6px;
+  padding: 3px 6px;
+  color: #0e1b2e;
+  background: #f6c453;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .connection {
@@ -202,6 +378,39 @@ button {
   width: 100%;
   max-width: 1060px;
   padding-top: 18px;
+}
+
+.resource-list {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 1060px;
+  padding-top: 18px;
+}
+
+.resource-row {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d7dde5;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.resource-row strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.resource-row code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  padding: 3px 6px;
+  color: #475569;
+  background: #eef2f5;
+  font-size: 12px;
 }
 
 .empty-state {
@@ -376,14 +585,20 @@ pre {
     padding: 18px;
   }
 
+  .workspace-header,
   .timeline-header {
     align-items: flex-start;
     flex-direction: column;
   }
 
+  .workspace-header h2,
   .timeline-header h2 {
     max-width: 100%;
     font-size: 20px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .timeline-item {

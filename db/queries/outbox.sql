@@ -34,6 +34,14 @@ where outbox_id = sqlc.arg(outbox_id)
   and status in ('PENDING', 'FAILED')
 returning *;
 
+-- name: ResetStaleTaskOutboxProcessing :exec
+update task_outbox
+set status = 'FAILED',
+    next_retry_at = now(),
+    updated_at = now()
+where status = 'PROCESSING'
+  and updated_at < now() - sqlc.arg(stale_after)::interval;
+
 -- name: MarkTaskOutboxSent :one
 update task_outbox
 set status = 'SENT',

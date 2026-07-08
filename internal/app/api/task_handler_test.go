@@ -222,9 +222,15 @@ func newTestTaskRouterWithEvents(service taskService, events eventService) http.
 }
 
 type fakeTaskService struct {
-	createTask func(context.Context, taskapi.CreateTaskInput) (taskapi.CreatedTask, error)
-	getTask    func(context.Context, taskapi.GetTaskInput) (taskapi.TaskDetail, error)
-	listTasks  func(context.Context, taskapi.ListTasksInput) (taskapi.TaskPage, error)
+	createTask      func(context.Context, taskapi.CreateTaskInput) (taskapi.CreatedTask, error)
+	getTask         func(context.Context, taskapi.GetTaskInput) (taskapi.TaskDetail, error)
+	listTasks       func(context.Context, taskapi.ListTasksInput) (taskapi.TaskPage, error)
+	cancelTask      func(context.Context, taskapi.CancelTaskInput) (taskapi.TaskStatusResult, error)
+	resumeTask      func(context.Context, taskapi.ResumeTaskInput) (taskapi.ResumeTaskResult, error)
+	decideToolCall  func(context.Context, taskapi.DecideToolCallInput) (taskapi.ToolCallDecisionResult, error)
+	listToolCalls   func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.ToolCallPage, error)
+	listCheckpoints func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.CheckpointPage, error)
+	listArtifacts   func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.ArtifactPage, error)
 }
 
 // CreateTask 调用测试注入的创建任务逻辑。
@@ -249,6 +255,54 @@ func (s *fakeTaskService) ListTasks(ctx context.Context, input taskapi.ListTasks
 		return taskapi.TaskPage{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 ListTasks")
 	}
 	return s.listTasks(ctx, input)
+}
+
+// CancelTask 调用测试注入的任务取消逻辑。
+func (s *fakeTaskService) CancelTask(ctx context.Context, input taskapi.CancelTaskInput) (taskapi.TaskStatusResult, error) {
+	if s.cancelTask == nil {
+		return taskapi.TaskStatusResult{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 CancelTask")
+	}
+	return s.cancelTask(ctx, input)
+}
+
+// ResumeTask 调用测试注入的任务恢复逻辑。
+func (s *fakeTaskService) ResumeTask(ctx context.Context, input taskapi.ResumeTaskInput) (taskapi.ResumeTaskResult, error) {
+	if s.resumeTask == nil {
+		return taskapi.ResumeTaskResult{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 ResumeTask")
+	}
+	return s.resumeTask(ctx, input)
+}
+
+// DecideToolCall 调用测试注入的审批决策逻辑。
+func (s *fakeTaskService) DecideToolCall(ctx context.Context, input taskapi.DecideToolCallInput) (taskapi.ToolCallDecisionResult, error) {
+	if s.decideToolCall == nil {
+		return taskapi.ToolCallDecisionResult{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 DecideToolCall")
+	}
+	return s.decideToolCall(ctx, input)
+}
+
+// ListToolCalls 调用测试注入的工具调用列表逻辑。
+func (s *fakeTaskService) ListToolCalls(ctx context.Context, input taskapi.ListTaskChildrenInput) (taskapi.ToolCallPage, error) {
+	if s.listToolCalls == nil {
+		return taskapi.ToolCallPage{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 ListToolCalls")
+	}
+	return s.listToolCalls(ctx, input)
+}
+
+// ListCheckpoints 调用测试注入的 checkpoint 列表逻辑。
+func (s *fakeTaskService) ListCheckpoints(ctx context.Context, input taskapi.ListTaskChildrenInput) (taskapi.CheckpointPage, error) {
+	if s.listCheckpoints == nil {
+		return taskapi.CheckpointPage{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 ListCheckpoints")
+	}
+	return s.listCheckpoints(ctx, input)
+}
+
+// ListArtifacts 调用测试注入的 artifact 列表逻辑。
+func (s *fakeTaskService) ListArtifacts(ctx context.Context, input taskapi.ListTaskChildrenInput) (taskapi.ArtifactPage, error) {
+	if s.listArtifacts == nil {
+		return taskapi.ArtifactPage{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 ListArtifacts")
+	}
+	return s.listArtifacts(ctx, input)
 }
 
 type fakeEventService struct {

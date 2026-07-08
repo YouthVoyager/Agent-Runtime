@@ -1,0 +1,16 @@
+meta {
+  name: List Tool Calls
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{base_url}}/api/v1/tasks/{{task_id}}/tool-calls
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{jwt_token}}
+  X-Request-ID: bruno-list-tool-calls
+}
