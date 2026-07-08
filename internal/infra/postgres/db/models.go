@@ -545,6 +545,14 @@ type Checkpoint struct {
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type TaskIdempotencyKey struct {
+	TenantID        string             `db:"tenant_id" json:"tenant_id"`
+	UserID          string             `db:"user_id" json:"user_id"`
+	ClientRequestID string             `db:"client_request_id" json:"client_request_id"`
+	TaskID          string             `db:"task_id" json:"task_id"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type TaskOutbox struct {
 	OutboxID      int64              `db:"outbox_id" json:"outbox_id"`
 	TenantID      string             `db:"tenant_id" json:"tenant_id"`

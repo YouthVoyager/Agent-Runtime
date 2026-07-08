@@ -6,6 +6,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -16,11 +18,13 @@ type Querier interface {
 	CreateApproval(ctx context.Context, arg CreateApprovalParams) (Approval, error)
 	CreateArtifact(ctx context.Context, arg CreateArtifactParams) (Artifact, error)
 	CreateCheckpoint(ctx context.Context, arg CreateCheckpointParams) (Checkpoint, error)
+	CreateTaskIdempotencyKey(ctx context.Context, arg CreateTaskIdempotencyKeyParams) error
 	CreateTaskOutboxMessage(ctx context.Context, arg CreateTaskOutboxMessageParams) (TaskOutbox, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
 	CreateToolCall(ctx context.Context, arg CreateToolCallParams) (ToolCall, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DecideApproval(ctx context.Context, arg DecideApprovalParams) (Approval, error)
+	DecideApprovalByCall(ctx context.Context, arg DecideApprovalByCallParams) (Approval, error)
 	FailToolCall(ctx context.Context, arg FailToolCallParams) (ToolCall, error)
 	GetAgentEvent(ctx context.Context, arg GetAgentEventParams) (AgentEvent, error)
 	GetAgentState(ctx context.Context, arg GetAgentStateParams) (AgentState, error)
@@ -29,12 +33,14 @@ type Querier interface {
 	GetArtifact(ctx context.Context, arg GetArtifactParams) (Artifact, error)
 	GetCheckpoint(ctx context.Context, arg GetCheckpointParams) (Checkpoint, error)
 	GetLatestCheckpoint(ctx context.Context, arg GetLatestCheckpointParams) (Checkpoint, error)
+	GetTaskByClientRequestID(ctx context.Context, arg GetTaskByClientRequestIDParams) (AgentTask, error)
 	GetTenant(ctx context.Context, tenantID string) (Tenant, error)
 	GetTenantToolPolicy(ctx context.Context, arg GetTenantToolPolicyParams) (TenantToolPolicy, error)
 	GetToolCall(ctx context.Context, arg GetToolCallParams) (ToolCall, error)
 	GetToolCallByIdempotencyKey(ctx context.Context, arg GetToolCallByIdempotencyKeyParams) (ToolCall, error)
 	GetUser(ctx context.Context, arg GetUserParams) (User, error)
 	ListAgentEventsByTask(ctx context.Context, arg ListAgentEventsByTaskParams) ([]AgentEvent, error)
+	ListAgentEventsByTaskAndType(ctx context.Context, arg ListAgentEventsByTaskAndTypeParams) ([]AgentEvent, error)
 	ListAgentEventsByType(ctx context.Context, arg ListAgentEventsByTypeParams) ([]AgentEvent, error)
 	ListAgentTasksByTenant(ctx context.Context, arg ListAgentTasksByTenantParams) ([]AgentTask, error)
 	ListAgentTasksByTenantAndStatus(ctx context.Context, arg ListAgentTasksByTenantAndStatusParams) ([]AgentTask, error)
@@ -42,20 +48,26 @@ type Querier interface {
 	ListAgentTasksByUserAndStatus(ctx context.Context, arg ListAgentTasksByUserAndStatusParams) ([]AgentTask, error)
 	ListArtifactsByTask(ctx context.Context, arg ListArtifactsByTaskParams) ([]Artifact, error)
 	ListCheckpointsByTask(ctx context.Context, arg ListCheckpointsByTaskParams) ([]Checkpoint, error)
+	ListPendingApprovalsByTask(ctx context.Context, arg ListPendingApprovalsByTaskParams) ([]Approval, error)
 	ListPendingTaskOutboxMessages(ctx context.Context, limitRows int32) ([]TaskOutbox, error)
+	ListRunnableAgentTasks(ctx context.Context, limitRows int32) ([]AgentTask, error)
 	ListTenantToolPolicies(ctx context.Context, tenantID string) ([]TenantToolPolicy, error)
 	ListToolCallsByTask(ctx context.Context, arg ListToolCallsByTaskParams) ([]ToolCall, error)
+	ListToolCallsByTaskStatus(ctx context.Context, arg ListToolCallsByTaskStatusParams) ([]ToolCall, error)
 	MarkAgentTaskFailed(ctx context.Context, arg MarkAgentTaskFailedParams) (AgentTask, error)
 	MarkArtifactDeleted(ctx context.Context, arg MarkArtifactDeletedParams) (Artifact, error)
 	MarkTaskOutboxFailed(ctx context.Context, arg MarkTaskOutboxFailedParams) (TaskOutbox, error)
 	MarkTaskOutboxProcessing(ctx context.Context, outboxID int64) (TaskOutbox, error)
 	MarkTaskOutboxSent(ctx context.Context, outboxID int64) (TaskOutbox, error)
+	ResetStaleTaskOutboxProcessing(ctx context.Context, staleAfter pgtype.Interval) error
 	StartToolCall(ctx context.Context, arg StartToolCallParams) (ToolCall, error)
 	UpdateAgentStateOptimistic(ctx context.Context, arg UpdateAgentStateOptimisticParams) (AgentState, error)
 	UpdateAgentTaskBudgetUsage(ctx context.Context, arg UpdateAgentTaskBudgetUsageParams) (AgentTask, error)
 	UpdateAgentTaskStatus(ctx context.Context, arg UpdateAgentTaskStatusParams) (AgentTask, error)
+	UpdateAgentTaskStatusIfCurrent(ctx context.Context, arg UpdateAgentTaskStatusIfCurrentParams) (AgentTask, error)
 	UpdateAgentTaskWorkflow(ctx context.Context, arg UpdateAgentTaskWorkflowParams) (AgentTask, error)
 	UpdateToolCallApprovalStatus(ctx context.Context, arg UpdateToolCallApprovalStatusParams) (ToolCall, error)
+	UpdateToolCallStatusAndApproval(ctx context.Context, arg UpdateToolCallStatusAndApprovalParams) (ToolCall, error)
 	UpsertTenantToolPolicy(ctx context.Context, arg UpsertTenantToolPolicyParams) (TenantToolPolicy, error)
 }
 

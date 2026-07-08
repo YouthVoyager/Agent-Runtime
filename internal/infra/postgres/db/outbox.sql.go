@@ -200,3 +200,17 @@ func (q *Queries) MarkTaskOutboxSent(ctx context.Context, outboxID int64) (TaskO
 	)
 	return i, err
 }
+
+const resetStaleTaskOutboxProcessing = `-- name: ResetStaleTaskOutboxProcessing :exec
+update task_outbox
+set status = 'FAILED',
+    next_retry_at = now(),
+    updated_at = now()
+where status = 'PROCESSING'
+  and updated_at < now() - $1::interval
+`
+
+func (q *Queries) ResetStaleTaskOutboxProcessing(ctx context.Context, staleAfter pgtype.Interval) error {
+	_, err := q.db.Exec(ctx, resetStaleTaskOutboxProcessing, staleAfter)
+	return err
+}

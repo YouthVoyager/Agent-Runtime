@@ -59,14 +59,16 @@ require_binary "runtime-worker"
 require_binary "tool-gateway"
 require_binary "llm-gateway"
 
+# tool-gateway 备用端口避开 18082:该端口是 docker-compose 中 tool-gateway 的对外映射,
+# Docker 环境运行时会命中容器而非被测二进制,导致冒烟结果失真。
 start_service "api-service" "API_SERVICE_HTTP_ADDR" "18080"
 start_service "runtime-worker" "RUNTIME_WORKER_HTTP_ADDR" "18081"
-start_service "tool-gateway" "TOOL_GATEWAY_HTTP_ADDR" "18082"
+start_service "tool-gateway" "TOOL_GATEWAY_HTTP_ADDR" "18084"
 start_service "llm-gateway" "LLM_GATEWAY_HTTP_ADDR" "18083"
 
 wait_health "api-service" "18080"
 wait_health "runtime-worker" "18081"
-wait_health "tool-gateway" "18082"
+wait_health "tool-gateway" "18084"
 wait_health "llm-gateway" "18083"
 
 echo "四个服务均可正常启动并响应 health check"

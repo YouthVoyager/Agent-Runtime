@@ -336,6 +336,68 @@ func (q *Queries) ListToolCallsByTask(ctx context.Context, arg ListToolCallsByTa
 	return items, nil
 }
 
+const listToolCallsByTaskStatus = `-- name: ListToolCallsByTaskStatus :many
+select call_id, task_id, tenant_id, user_id, tool_name, arguments, arguments_hash, idempotency_key, status, result, result_artifact_id, risk_level, approval_status, error_code, error_message, started_at, finished_at, created_at, updated_at
+from tool_calls
+where tenant_id = $1
+  and task_id = $2
+  and status = $3
+order by created_at asc, call_id asc
+limit $4
+`
+
+type ListToolCallsByTaskStatusParams struct {
+	TenantID  string         `db:"tenant_id" json:"tenant_id"`
+	TaskID    string         `db:"task_id" json:"task_id"`
+	Status    ToolCallStatus `db:"status" json:"status"`
+	LimitRows int32          `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) ListToolCallsByTaskStatus(ctx context.Context, arg ListToolCallsByTaskStatusParams) ([]ToolCall, error) {
+	rows, err := q.db.Query(ctx, listToolCallsByTaskStatus,
+		arg.TenantID,
+		arg.TaskID,
+		arg.Status,
+		arg.LimitRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ToolCall{}
+	for rows.Next() {
+		var i ToolCall
+		if err := rows.Scan(
+			&i.CallID,
+			&i.TaskID,
+			&i.TenantID,
+			&i.UserID,
+			&i.ToolName,
+			&i.Arguments,
+			&i.ArgumentsHash,
+			&i.IdempotencyKey,
+			&i.Status,
+			&i.Result,
+			&i.ResultArtifactID,
+			&i.RiskLevel,
+			&i.ApprovalStatus,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const startToolCall = `-- name: StartToolCall :one
 update tool_calls
 set status = 'RUNNING',
@@ -395,6 +457,55 @@ type UpdateToolCallApprovalStatusParams struct {
 
 func (q *Queries) UpdateToolCallApprovalStatus(ctx context.Context, arg UpdateToolCallApprovalStatusParams) (ToolCall, error) {
 	row := q.db.QueryRow(ctx, updateToolCallApprovalStatus, arg.ApprovalStatus, arg.TenantID, arg.CallID)
+	var i ToolCall
+	err := row.Scan(
+		&i.CallID,
+		&i.TaskID,
+		&i.TenantID,
+		&i.UserID,
+		&i.ToolName,
+		&i.Arguments,
+		&i.ArgumentsHash,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.Result,
+		&i.ResultArtifactID,
+		&i.RiskLevel,
+		&i.ApprovalStatus,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateToolCallStatusAndApproval = `-- name: UpdateToolCallStatusAndApproval :one
+update tool_calls
+set status = $1,
+    approval_status = $2,
+    updated_at = now()
+where tenant_id = $3
+  and call_id = $4
+returning call_id, task_id, tenant_id, user_id, tool_name, arguments, arguments_hash, idempotency_key, status, result, result_artifact_id, risk_level, approval_status, error_code, error_message, started_at, finished_at, created_at, updated_at
+`
+
+type UpdateToolCallStatusAndApprovalParams struct {
+	Status         ToolCallStatus `db:"status" json:"status"`
+	ApprovalStatus ApprovalStatus `db:"approval_status" json:"approval_status"`
+	TenantID       string         `db:"tenant_id" json:"tenant_id"`
+	CallID         string         `db:"call_id" json:"call_id"`
+}
+
+func (q *Queries) UpdateToolCallStatusAndApproval(ctx context.Context, arg UpdateToolCallStatusAndApprovalParams) (ToolCall, error) {
+	row := q.db.QueryRow(ctx, updateToolCallStatusAndApproval,
+		arg.Status,
+		arg.ApprovalStatus,
+		arg.TenantID,
+		arg.CallID,
+	)
 	var i ToolCall
 	err := row.Scan(
 		&i.CallID,

@@ -60,22 +60,25 @@
 - 根因:`internal/usecase/taskapi/control.go:150` `ResumeTask` 只拦截了 QUEUED/RUNNING(幂等返回)和 WAITING_APPROVAL(409),对 SUCCEEDED/CANCELED 直接走恢复分支。
 - 缓解因素:工具幂等键(task_id+step+tool+args)阻止了副作用工具重复执行(tool_calls 表无重复记录),但预算重复累计、事件流被污染。
 
-### P3(轻)预算 tool_calls 用量虚计
+### P3(轻)预算 tool_calls 用量虚计 —— ✅ 已修复(2026-07-08)
 
-- `internal/usecase/runtimeworker/service.go:517` `incrementBudgetUsage` 无条件 `UsedToolCalls++`,即使该 step 未发生工具调用(LLM 直接返回终态)也计入,导致 max_tool_calls 预算提前耗尽。
+- 原问题:`incrementBudgetUsage` 无条件 `UsedToolCalls++`,即使该 step 未发生工具调用(LLM 直接返回终态)也计入,导致 max_tool_calls 预算提前耗尽。
+- 修复:`completeTask` 传入 `toolCalled` 标记,仅实际发生工具调用的 step 累计 tool call 用量;新增单测 `TestIncrementBudgetUsage`。
 
-### P4(轻)outbox PROCESSING 死信恢复未接线
+### P4(轻)outbox PROCESSING 死信恢复未接线 —— ✅ 已修复(2026-07-08)
 
-- `ResetStaleTaskOutboxProcessing` 查询已在 sqlc 中定义但无任何调用方;worker 在 `MarkTaskOutboxProcessing` 之后崩溃,该消息将永久停留 PROCESSING。
-- 影响有限:当前 outbox 只承担 workflow_id 回填,任务推进走 `agent_tasks.status` 扫描,不依赖 outbox 投递;FAILED 消息的重试(retry_count+1、next_retry_at)已正确实现。
+- 原问题:`ResetStaleTaskOutboxProcessing` 查询已定义但无任何调用方;worker 在 `MarkTaskOutboxProcessing` 之后崩溃,该消息将永久停留 PROCESSING。影响有限:当前 outbox 只承担 workflow_id 回填,任务推进不依赖 outbox 投递。
+- 深层根因:`sqlc.yaml` 的 schema 只挂了 000002 迁移,缺 000003,导致 `make sqlc-generate` 报错、生成代码长期落后于 `db/queries`(该函数从未被生成,`events_ext.go` 也是因此手写的补丁)。
+- 修复:① `sqlc.yaml` schema 补齐三个 up 迁移并重新生成;② 删除与生成代码重复的手写补丁 `internal/infra/postgres/db/events_ext.go`;③ worker `dispatchOutbox` 派发前调用 `ResetStaleTaskOutboxProcessing`(30s 阈值),将超时 PROCESSING 消息重置为 FAILED 进入既有重试通道。
 
-### P5(基建)verify-services.sh 端口与 compose 冲突
+### P5(基建)verify-services.sh 端口与 compose 冲突 —— ✅ 已修复(2026-07-08)
 
-- 脚本用备用端口 18082 启动本地 tool-gateway 二进制,与 docker-compose 对外映射的 18082 相同;Docker 环境运行时,健康检查可能命中容器而非被测二进制,冒烟结果失真。
+- 原问题:脚本用备用端口 18082 启动本地 tool-gateway 二进制,与 docker-compose 对外映射的 18082 相同;Docker 环境运行时,健康检查可能命中容器而非被测二进制,冒烟结果失真。
+- 修复:tool-gateway 备用端口改为 18084,脚本内注明原因。
 
-### P6(文档)week-4 文档与实现不符
+### P6(文档)week-4 文档与实现不符 —— ❌ 撤销(误报)
 
-- `docs/week-4-*.md` 称 Timeline 前端为 React,实际 `web-ui/src/app.js` 为原生 JS(功能完整,仅记录文档偏差)。
+- 复核结论:`web-ui/src/app.js` 实际是 **React**(`import React from 'https://esm.sh/react@19.2.3'`,浏览器运行时经 ESM CDN 加载,故 package.json 零 npm 依赖),week-4 文档第 233 行对此有准确说明。首轮探索将"零 npm 依赖"误判为原生 JS。文档与实现一致,无需修改。
 
 ## 三、设计符合度矩阵(按设计方案章节)
 
@@ -135,10 +138,10 @@
 | --- | --- | --- |
 | 幂等矩阵(创建/工具/审批/cancel/resume/event_id) | ✅ | 六项全部实测通过(场景 2/3/5 + e2e-local + SSE 代码审查 event_id 单调) |
 | 事务边界(事务内不调外部服务) | ✅ | 代码审查确认:checkpoint/事件写入与 LLM/工具 HTTP 调用分离 |
-| Outbox 模式 | ⚠️ | 同事务写入 + worker 派发 + FAILED 重试符合设计;PROCESSING 死信恢复未接线(P4) |
+| Outbox 模式 | ✅ | 同事务写入 + worker 派发 + FAILED 重试符合设计;PROCESSING 死信恢复已接线(P4 已修复) |
 | 多租户隔离 | ✅ | 全部查询带 tenant_id,JWT 强校验,跨租户 404(场景 1);RBAC 简版(admin/owner/member) |
 | trace 贯穿 | ⚠️ | trace_id/span_id 生成并贯穿全部事件与表;无 OTel SDK、无真实 span 导出(⏳) |
-| Budget + LoopDetector | ⚠️ | Budget 四维检测 ✅(场景 8 + 单测);**LoopDetector 未实现**,仅 loop_fingerprints 字段占位(⏳);P3 虚计问题 |
+| Budget + LoopDetector | ⚠️ | Budget 四维检测 ✅(场景 8 + 单测,P3 虚计已修复);**LoopDetector 未实现**,仅 loop_fingerprints 字段占位(⏳) |
 
 ### §十三 生产必须项(未接入清单,均记为已知差距 ⏳)
 
@@ -148,6 +151,6 @@ Temporal SDK、OpenTelemetry、Prometheus client(/metrics 为手写文本)、NAT
 
 **已实现功能的行为正确性良好**:任务生命周期、审批闭环、幂等(四层)、cancel/resume 主链路、budget、多租户隔离、checkpoint、outbox、timeline 查询在 20 个自动化场景(4 既有 + 10 扩展 + 单测)下全部符合设计语义,数据库层甚至严于设计。
 
-**两个需要优先处理的偏差**:P1(SSE 中间件缺陷,一行级修复,恢复设计必须项)和 P2(resume 状态校验缺失,数据一致性风险)。P3-P6 为低危。
+**两个需要优先处理的偏差**:P1(SSE 中间件缺陷,一行级修复,恢复设计必须项)和 P2(resume 状态校验缺失,数据一致性风险),已另行分支修复中。P3-P5 已于 2026-07-08 修复(见各条目),P6 复核后撤销(误报)。
 
 **架构级差距**均为 local-production-loop 文档中已声明的 MVP 取舍,替换点(workflow_id、outbox、PromptVersion、storage_backend 字段)已预留,与设计方案的演进路径一致。

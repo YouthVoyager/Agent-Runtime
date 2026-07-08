@@ -127,6 +127,52 @@ func (q *Queries) DecideApproval(ctx context.Context, arg DecideApprovalParams) 
 	return i, err
 }
 
+const decideApprovalByCall = `-- name: DecideApprovalByCall :one
+update approvals
+set status = $1,
+    approver_id = $2,
+    comment = $3,
+    decided_at = coalesce(decided_at, now())
+where tenant_id = $4
+  and call_id = $5
+  and status = 'PENDING'
+returning approval_id, task_id, tenant_id, call_id, approver_id, status, risk_level, approval_reason, comment, expires_at, decided_at, created_at
+`
+
+type DecideApprovalByCallParams struct {
+	Status     ApprovalStatus `db:"status" json:"status"`
+	ApproverID *string        `db:"approver_id" json:"approver_id"`
+	Comment    *string        `db:"comment" json:"comment"`
+	TenantID   string         `db:"tenant_id" json:"tenant_id"`
+	CallID     string         `db:"call_id" json:"call_id"`
+}
+
+func (q *Queries) DecideApprovalByCall(ctx context.Context, arg DecideApprovalByCallParams) (Approval, error) {
+	row := q.db.QueryRow(ctx, decideApprovalByCall,
+		arg.Status,
+		arg.ApproverID,
+		arg.Comment,
+		arg.TenantID,
+		arg.CallID,
+	)
+	var i Approval
+	err := row.Scan(
+		&i.ApprovalID,
+		&i.TaskID,
+		&i.TenantID,
+		&i.CallID,
+		&i.ApproverID,
+		&i.Status,
+		&i.RiskLevel,
+		&i.ApprovalReason,
+		&i.Comment,
+		&i.ExpiresAt,
+		&i.DecidedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getApprovalByCall = `-- name: GetApprovalByCall :one
 select approval_id, task_id, tenant_id, call_id, approver_id, status, risk_level, approval_reason, comment, expires_at, decided_at, created_at
 from approvals
@@ -158,4 +204,51 @@ func (q *Queries) GetApprovalByCall(ctx context.Context, arg GetApprovalByCallPa
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listPendingApprovalsByTask = `-- name: ListPendingApprovalsByTask :many
+select approval_id, task_id, tenant_id, call_id, approver_id, status, risk_level, approval_reason, comment, expires_at, decided_at, created_at
+from approvals
+where tenant_id = $1
+  and task_id = $2
+  and status = 'PENDING'
+order by created_at asc
+`
+
+type ListPendingApprovalsByTaskParams struct {
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	TaskID   string `db:"task_id" json:"task_id"`
+}
+
+func (q *Queries) ListPendingApprovalsByTask(ctx context.Context, arg ListPendingApprovalsByTaskParams) ([]Approval, error) {
+	rows, err := q.db.Query(ctx, listPendingApprovalsByTask, arg.TenantID, arg.TaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Approval{}
+	for rows.Next() {
+		var i Approval
+		if err := rows.Scan(
+			&i.ApprovalID,
+			&i.TaskID,
+			&i.TenantID,
+			&i.CallID,
+			&i.ApproverID,
+			&i.Status,
+			&i.RiskLevel,
+			&i.ApprovalReason,
+			&i.Comment,
+			&i.ExpiresAt,
+			&i.DecidedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"stableagent/internal/domain/runtimeplan"
+	domaintask "stableagent/internal/domain/task"
 	"stableagent/internal/infra/postgres/db"
 )
 
@@ -45,6 +47,39 @@ func TestCheckBudget(t *testing.T) {
 		if err := service.checkBudget(task); err == nil {
 			t.Fatalf("%s 时必须拒绝继续执行", tc.name)
 		}
+	}
+}
+
+// TestIncrementBudgetUsage 校验预算用量累计:tool call 只在实际调用时计数。
+func TestIncrementBudgetUsage(t *testing.T) {
+	raw := json.RawMessage(`{"used_steps":1,"used_tokens":10,"used_tool_calls":2,"used_cost_usd":0.5}`)
+	usage := runtimeplan.TokenUsage{TotalTokens: 30, CostUSD: 0.1}
+
+	withTool, err := incrementBudgetUsage(raw, usage, true)
+	if err != nil {
+		t.Fatalf("累计预算不应报错: %v", err)
+	}
+	var afterTool domaintask.BudgetUsage
+	if err := json.Unmarshal(withTool, &afterTool); err != nil {
+		t.Fatalf("解析累计结果失败: %v", err)
+	}
+	if afterTool.UsedSteps != 2 || afterTool.UsedTokens != 40 || afterTool.UsedToolCalls != 3 {
+		t.Fatalf("发生工具调用的 step 累计错误: %+v", afterTool)
+	}
+
+	withoutTool, err := incrementBudgetUsage(raw, usage, false)
+	if err != nil {
+		t.Fatalf("累计预算不应报错: %v", err)
+	}
+	var afterNoTool domaintask.BudgetUsage
+	if err := json.Unmarshal(withoutTool, &afterNoTool); err != nil {
+		t.Fatalf("解析累计结果失败: %v", err)
+	}
+	if afterNoTool.UsedToolCalls != 2 {
+		t.Fatalf("未发生工具调用时 tool call 不应累计: %+v", afterNoTool)
+	}
+	if afterNoTool.UsedSteps != 2 || afterNoTool.UsedTokens != 40 {
+		t.Fatalf("step/token 用量必须照常累计: %+v", afterNoTool)
 	}
 }
 

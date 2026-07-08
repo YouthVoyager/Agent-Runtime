@@ -94,8 +94,18 @@ func (s *Service) tick(ctx context.Context) {
 	}
 }
 
+// outboxStaleAfter 定义 PROCESSING 消息多久没有更新即视为死信,重置为 FAILED 等待重试。
+const outboxStaleAfter = 30 * time.Second
+
 // dispatchOutbox 扫描 START_WORKFLOW 消息并回填 workflow_id。
 func (s *Service) dispatchOutbox(ctx context.Context) error {
+	// worker 在 MarkTaskOutboxProcessing 之后崩溃会把消息留在 PROCESSING,先重置超时死信再派发。
+	if err := s.queries.ResetStaleTaskOutboxProcessing(ctx, pgtype.Interval{
+		Microseconds: outboxStaleAfter.Microseconds(),
+		Valid:        true,
+	}); err != nil {
+		s.logger.Warn("重置超时 outbox 消息失败", "error", err)
+	}
 	messages, err := s.queries.ListPendingTaskOutboxMessages(ctx, 20)
 	if err != nil {
 		return err
@@ -232,7 +242,7 @@ func (s *Service) runTask(ctx context.Context, task db.AgentTask) error {
 		return s.failTask(ctx, task, "CHECKPOINT_FAILED", err.Error())
 	}
 	if llmResp.ToolCall == nil || llmResp.IsFinal {
-		return s.completeTask(ctx, task, state, llmResp)
+		return s.completeTask(ctx, task, state, llmResp, false)
 	}
 	toolResult, err := s.callTool(ctx, task, state, *llmResp.ToolCall)
 	if err != nil {
@@ -244,7 +254,7 @@ func (s *Service) runTask(ctx context.Context, task db.AgentTask) error {
 	if toolResult.Status == string(db.ToolCallStatusFAILED) {
 		return s.failTask(ctx, task, firstPtr(toolResult.ErrorCode, "TOOL_FAILED"), firstPtr(toolResult.ErrorMessage, "工具调用失败"))
 	}
-	return s.completeTask(ctx, task, state, llmResp)
+	return s.completeTask(ctx, task, state, llmResp, true)
 }
 
 // lockQueuedTask 将 QUEUED 任务原子切换为 RUNNING。
@@ -322,9 +332,9 @@ func (s *Service) callTool(ctx context.Context, task db.AgentTask, state db.Agen
 	return envelope.Data, nil
 }
 
-// completeTask 更新状态、预算和任务终态。
-func (s *Service) completeTask(ctx context.Context, task db.AgentTask, state db.AgentState, llmResp runtimeplan.ChatResponse) error {
-	usage, err := incrementBudgetUsage(task.BudgetUsage, llmResp.Usage)
+// completeTask 更新状态、预算和任务终态,toolCalled 标记本 step 是否实际发生了工具调用。
+func (s *Service) completeTask(ctx context.Context, task db.AgentTask, state db.AgentState, llmResp runtimeplan.ChatResponse, toolCalled bool) error {
+	usage, err := incrementBudgetUsage(task.BudgetUsage, llmResp.Usage, toolCalled)
 	if err != nil {
 		return s.failTask(ctx, task, "BUDGET_USAGE_INVALID", err.Error())
 	}
@@ -504,8 +514,8 @@ func (s *Service) checkBudget(task db.AgentTask) error {
 	return nil
 }
 
-// incrementBudgetUsage 根据 LLM 返回用量更新预算使用量。
-func incrementBudgetUsage(raw json.RawMessage, usage runtimeplan.TokenUsage) (json.RawMessage, error) {
+// incrementBudgetUsage 根据 LLM 返回用量更新预算使用量,只有实际发生工具调用的 step 才累计 tool call 用量。
+func incrementBudgetUsage(raw json.RawMessage, usage runtimeplan.TokenUsage, toolCalled bool) (json.RawMessage, error) {
 	var current domaintask.BudgetUsage
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &current); err != nil {
@@ -514,7 +524,9 @@ func incrementBudgetUsage(raw json.RawMessage, usage runtimeplan.TokenUsage) (js
 	}
 	current.UsedSteps++
 	current.UsedTokens += usage.TotalTokens
-	current.UsedToolCalls++
+	if toolCalled {
+		current.UsedToolCalls++
+	}
 	current.UsedCostUSD += usage.CostUSD
 	return json.Marshal(current)
 }

@@ -74,6 +74,37 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 	return i, err
 }
 
+const createTaskIdempotencyKey = `-- name: CreateTaskIdempotencyKey :exec
+insert into task_idempotency_keys (
+    tenant_id,
+    user_id,
+    client_request_id,
+    task_id
+) values (
+    $1,
+    $2,
+    $3,
+    $4
+)
+`
+
+type CreateTaskIdempotencyKeyParams struct {
+	TenantID        string `db:"tenant_id" json:"tenant_id"`
+	UserID          string `db:"user_id" json:"user_id"`
+	ClientRequestID string `db:"client_request_id" json:"client_request_id"`
+	TaskID          string `db:"task_id" json:"task_id"`
+}
+
+func (q *Queries) CreateTaskIdempotencyKey(ctx context.Context, arg CreateTaskIdempotencyKeyParams) error {
+	_, err := q.db.Exec(ctx, createTaskIdempotencyKey,
+		arg.TenantID,
+		arg.UserID,
+		arg.ClientRequestID,
+		arg.TaskID,
+	)
+	return err
+}
+
 const getAgentTask = `-- name: GetAgentTask :one
 select task_id, tenant_id, user_id, goal, status, budget, budget_usage, workflow_id, trace_id, last_error_code, last_error_message, created_at, updated_at
 from agent_tasks
@@ -89,6 +120,45 @@ type GetAgentTaskParams struct {
 
 func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (AgentTask, error) {
 	row := q.db.QueryRow(ctx, getAgentTask, arg.TenantID, arg.TaskID)
+	var i AgentTask
+	err := row.Scan(
+		&i.TaskID,
+		&i.TenantID,
+		&i.UserID,
+		&i.Goal,
+		&i.Status,
+		&i.Budget,
+		&i.BudgetUsage,
+		&i.WorkflowID,
+		&i.TraceID,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTaskByClientRequestID = `-- name: GetTaskByClientRequestID :one
+select agent_tasks.task_id, agent_tasks.tenant_id, agent_tasks.user_id, agent_tasks.goal, agent_tasks.status, agent_tasks.budget, agent_tasks.budget_usage, agent_tasks.workflow_id, agent_tasks.trace_id, agent_tasks.last_error_code, agent_tasks.last_error_message, agent_tasks.created_at, agent_tasks.updated_at
+from task_idempotency_keys
+join agent_tasks
+  on agent_tasks.tenant_id = task_idempotency_keys.tenant_id
+ and agent_tasks.task_id = task_idempotency_keys.task_id
+where task_idempotency_keys.tenant_id = $1
+  and task_idempotency_keys.user_id = $2
+  and task_idempotency_keys.client_request_id = $3
+limit 1
+`
+
+type GetTaskByClientRequestIDParams struct {
+	TenantID        string `db:"tenant_id" json:"tenant_id"`
+	UserID          string `db:"user_id" json:"user_id"`
+	ClientRequestID string `db:"client_request_id" json:"client_request_id"`
+}
+
+func (q *Queries) GetTaskByClientRequestID(ctx context.Context, arg GetTaskByClientRequestIDParams) (AgentTask, error) {
+	row := q.db.QueryRow(ctx, getTaskByClientRequestID, arg.TenantID, arg.UserID, arg.ClientRequestID)
 	var i AgentTask
 	err := row.Scan(
 		&i.TaskID,
@@ -328,6 +398,48 @@ func (q *Queries) ListAgentTasksByUserAndStatus(ctx context.Context, arg ListAge
 	return items, nil
 }
 
+const listRunnableAgentTasks = `-- name: ListRunnableAgentTasks :many
+select task_id, tenant_id, user_id, goal, status, budget, budget_usage, workflow_id, trace_id, last_error_code, last_error_message, created_at, updated_at
+from agent_tasks
+where status in ('QUEUED', 'CANCELING')
+order by updated_at asc, task_id asc
+limit $1
+`
+
+func (q *Queries) ListRunnableAgentTasks(ctx context.Context, limitRows int32) ([]AgentTask, error) {
+	rows, err := q.db.Query(ctx, listRunnableAgentTasks, limitRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentTask{}
+	for rows.Next() {
+		var i AgentTask
+		if err := rows.Scan(
+			&i.TaskID,
+			&i.TenantID,
+			&i.UserID,
+			&i.Goal,
+			&i.Status,
+			&i.Budget,
+			&i.BudgetUsage,
+			&i.WorkflowID,
+			&i.TraceID,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markAgentTaskFailed = `-- name: MarkAgentTaskFailed :one
 update agent_tasks
 set status = 'FAILED',
@@ -425,6 +537,49 @@ type UpdateAgentTaskStatusParams struct {
 
 func (q *Queries) UpdateAgentTaskStatus(ctx context.Context, arg UpdateAgentTaskStatusParams) (AgentTask, error) {
 	row := q.db.QueryRow(ctx, updateAgentTaskStatus, arg.Status, arg.TenantID, arg.TaskID)
+	var i AgentTask
+	err := row.Scan(
+		&i.TaskID,
+		&i.TenantID,
+		&i.UserID,
+		&i.Goal,
+		&i.Status,
+		&i.Budget,
+		&i.BudgetUsage,
+		&i.WorkflowID,
+		&i.TraceID,
+		&i.LastErrorCode,
+		&i.LastErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateAgentTaskStatusIfCurrent = `-- name: UpdateAgentTaskStatusIfCurrent :one
+update agent_tasks
+set status = $1,
+    updated_at = now()
+where tenant_id = $2
+  and task_id = $3
+  and status = $4
+returning task_id, tenant_id, user_id, goal, status, budget, budget_usage, workflow_id, trace_id, last_error_code, last_error_message, created_at, updated_at
+`
+
+type UpdateAgentTaskStatusIfCurrentParams struct {
+	NextStatus    TaskStatus `db:"next_status" json:"next_status"`
+	TenantID      string     `db:"tenant_id" json:"tenant_id"`
+	TaskID        string     `db:"task_id" json:"task_id"`
+	CurrentStatus TaskStatus `db:"current_status" json:"current_status"`
+}
+
+func (q *Queries) UpdateAgentTaskStatusIfCurrent(ctx context.Context, arg UpdateAgentTaskStatusIfCurrentParams) (AgentTask, error) {
+	row := q.db.QueryRow(ctx, updateAgentTaskStatusIfCurrent,
+		arg.NextStatus,
+		arg.TenantID,
+		arg.TaskID,
+		arg.CurrentStatus,
+	)
 	var i AgentTask
 	err := row.Scan(
 		&i.TaskID,
