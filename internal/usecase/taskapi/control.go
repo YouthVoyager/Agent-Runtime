@@ -160,6 +160,9 @@ func (s *Service) ResumeTask(ctx context.Context, input ResumeTaskInput) (Resume
 	if status == domaintask.StatusWaitingApproval {
 		return ResumeTaskResult{}, apperrors.New(apperrors.CodeConflict, "等待审批的任务需要先处理审批")
 	}
+	if status == domaintask.StatusSucceeded || status == domaintask.StatusCanceled {
+		return ResumeTaskResult{}, apperrors.New(apperrors.CodeConflict, "任务已处于终态，无法恢复")
+	}
 	checkpoint, err := s.queries.GetLatestCheckpoint(ctx, db.GetLatestCheckpointParams{
 		TenantID: input.TenantID,
 		TaskID:   input.TaskID,

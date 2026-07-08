@@ -106,6 +106,18 @@ func (r *statusRecorder) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 }
 
+// Flush 透传底层 writer 的 Flusher 能力，SSE 等流式响应依赖该方法。
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Unwrap 暴露底层 ResponseWriter，供 http.NewResponseController 穿透包装。
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // newRequestID 生成请求追踪 ID，随机源失败时使用时间戳作为降级值。
 func newRequestID() string {
 	var buf [16]byte
