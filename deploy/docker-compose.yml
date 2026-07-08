@@ -156,6 +156,8 @@ services:
       POSTGRES_PWD: temporal
       POSTGRES_SEEDS: temporal-postgres
       DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    volumes:
+      - ./temporal/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
     ports:
       - "7233:7233"
     depends_on:
