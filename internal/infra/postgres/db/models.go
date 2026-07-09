@@ -535,6 +535,20 @@ type Artifact struct {
 	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type AuditLog struct {
+	AuditID      string             `db:"audit_id" json:"audit_id"`
+	ActorID      string             `db:"actor_id" json:"actor_id"`
+	TenantID     *string            `db:"tenant_id" json:"tenant_id"`
+	Action       string             `db:"action" json:"action"`
+	ResourceType string             `db:"resource_type" json:"resource_type"`
+	ResourceID   *string            `db:"resource_id" json:"resource_id"`
+	Before       json.RawMessage    `db:"before" json:"before"`
+	After        json.RawMessage    `db:"after" json:"after"`
+	Ip           *string            `db:"ip" json:"ip"`
+	UserAgent    *string            `db:"user_agent" json:"user_agent"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Checkpoint struct {
 	CheckpointID  string             `db:"checkpoint_id" json:"checkpoint_id"`
 	TaskID        string             `db:"task_id" json:"task_id"`
@@ -545,6 +559,13 @@ type Checkpoint struct {
 	Reason        string             `db:"reason" json:"reason"`
 	TraceID       *string            `db:"trace_id" json:"trace_id"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type SystemSetting struct {
+	Section   string             `db:"section" json:"section"`
+	Value     json.RawMessage    `db:"value" json:"value"`
+	UpdatedBy *string            `db:"updated_by" json:"updated_by"`
+	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type TaskIdempotencyKey struct {
@@ -569,6 +590,16 @@ type TaskOutbox struct {
 	UpdatedAt     pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type TaskTemplate struct {
+	TemplateID string             `db:"template_id" json:"template_id"`
+	TenantID   string             `db:"tenant_id" json:"tenant_id"`
+	Name       string             `db:"name" json:"name"`
+	Payload    json.RawMessage    `db:"payload" json:"payload"`
+	Shared     bool               `db:"shared" json:"shared"`
+	CreatedBy  string             `db:"created_by" json:"created_by"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Tenant struct {
 	TenantID  string             `db:"tenant_id" json:"tenant_id"`
 	Name      string             `db:"name" json:"name"`
@@ -576,6 +607,7 @@ type Tenant struct {
 	Metadata  json.RawMessage    `db:"metadata" json:"metadata"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	Config    json.RawMessage    `db:"config" json:"config"`
 }
 
 type TenantToolPolicy struct {
@@ -588,6 +620,28 @@ type TenantToolPolicy struct {
 	Config          json.RawMessage    `db:"config" json:"config"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	Role            string             `db:"role" json:"role"`
+	MaxCallsPerDay  *int32             `db:"max_calls_per_day" json:"max_calls_per_day"`
+	ArgumentRules   json.RawMessage    `db:"argument_rules" json:"argument_rules"`
+	TimeoutSeconds  *int32             `db:"timeout_seconds" json:"timeout_seconds"`
+}
+
+type Tool struct {
+	ToolName               string             `db:"tool_name" json:"tool_name"`
+	Description            string             `db:"description" json:"description"`
+	Category               string             `db:"category" json:"category"`
+	DefaultRiskLevel       RiskLevel          `db:"default_risk_level" json:"default_risk_level"`
+	Enabled                bool               `db:"enabled" json:"enabled"`
+	Version                string             `db:"version" json:"version"`
+	Owner                  string             `db:"owner" json:"owner"`
+	HasSideEffect          bool               `db:"has_side_effect" json:"has_side_effect"`
+	RequiresIdempotencyKey bool               `db:"requires_idempotency_key" json:"requires_idempotency_key"`
+	TimeoutSeconds         int32              `db:"timeout_seconds" json:"timeout_seconds"`
+	ParamsSchema           json.RawMessage    `db:"params_schema" json:"params_schema"`
+	ResultSchema           json.RawMessage    `db:"result_schema" json:"result_schema"`
+	RetryPolicy            json.RawMessage    `db:"retry_policy" json:"retry_policy"`
+	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type ToolCall struct {
@@ -622,4 +676,5 @@ type User struct {
 	Metadata    json.RawMessage    `db:"metadata" json:"metadata"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	LastLoginAt pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
 }

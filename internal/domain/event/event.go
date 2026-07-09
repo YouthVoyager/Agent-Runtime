@@ -15,6 +15,7 @@ const (
 	TypeTaskFailed           Type = "TASK_FAILED"
 	TypeTaskCancelled        Type = "TASK_CANCELLED"
 	TypeTaskResumed          Type = "TASK_RESUMED"
+	TypeTaskPaused           Type = "TASK_PAUSED"
 	TypeTaskStoppedByLimit   Type = "TASK_STOPPED_BY_LIMIT"
 	TypeStepStarted          Type = "STEP_STARTED"
 	TypeStepCompleted        Type = "STEP_COMPLETED"
@@ -62,6 +63,7 @@ func ParseType(raw string) (Type, bool) {
 		TypeTaskFailed,
 		TypeTaskCancelled,
 		TypeTaskResumed,
+		TypeTaskPaused,
 		TypeTaskStoppedByLimit,
 		TypeStepStarted,
 		TypeStepCompleted,

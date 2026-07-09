@@ -77,3 +77,11 @@ where tenant_id = sqlc.arg(tenant_id)
   and approval_id = sqlc.arg(approval_id)
   and status = 'PENDING'
 returning *;
+
+-- name: GetApproval :one
+select *
+from approvals
+where tenant_id = sqlc.arg(tenant_id)
+  and approval_id = sqlc.arg(approval_id)
+limit 1;
+

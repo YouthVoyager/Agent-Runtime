@@ -27,7 +27,10 @@ type taskService interface {
 	GetTask(ctx context.Context, input taskapi.GetTaskInput) (taskapi.TaskDetail, error)
 	ListTasks(ctx context.Context, input taskapi.ListTasksInput) (taskapi.TaskPage, error)
 	CancelTask(ctx context.Context, input taskapi.CancelTaskInput) (taskapi.TaskStatusResult, error)
+	PauseTask(ctx context.Context, input taskapi.PauseTaskInput) (taskapi.TaskStatusResult, error)
 	ResumeTask(ctx context.Context, input taskapi.ResumeTaskInput) (taskapi.ResumeTaskResult, error)
+	ResumeFromCheckpoint(ctx context.Context, input taskapi.ResumeFromCheckpointInput) (taskapi.ResumeTaskResult, error)
+	GetTaskState(ctx context.Context, input taskapi.GetTaskStateInput) (taskapi.TaskStateResult, error)
 	DecideToolCall(ctx context.Context, input taskapi.DecideToolCallInput) (taskapi.ToolCallDecisionResult, error)
 	ListToolCalls(ctx context.Context, input taskapi.ListTaskChildrenInput) (taskapi.ToolCallPage, error)
 	ListCheckpoints(ctx context.Context, input taskapi.ListTaskChildrenInput) (taskapi.CheckpointPage, error)
@@ -48,6 +51,14 @@ type createTaskRequest struct {
 
 type decideToolCallRequest struct {
 	Comment string `json:"comment"`
+	Note    string `json:"note"`
+	Reason  string `json:"reason"`
+	// TerminateTask 对齐审批拒绝扩展 body,用于决定是否直接终止任务。
+	TerminateTask bool `json:"terminate_task"`
+}
+
+type resumeFromCheckpointRequest struct {
+	CheckpointID string `json:"checkpoint_id"`
 }
 
 // newTaskHandler 创建任务 HTTP handler。
@@ -77,6 +88,8 @@ func (h *taskHandler) createTask(w http.ResponseWriter, r *http.Request) {
 		Goal:            req.Goal,
 		Budget:          req.Budget,
 		Constraints:     req.Constraints,
+		IP:              httpserver.ClientIP(r),
+		UserAgent:       r.UserAgent(),
 	})
 	if err != nil {
 		httpserver.WriteError(w, r, err)
@@ -123,10 +136,37 @@ func (h *taskHandler) cancelTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.service.CancelTask(r.Context(), taskapi.CancelTaskInput{
-		TenantID: tenantID,
-		UserID:   user.UserID,
-		UserRole: user.Role,
-		TaskID:   taskID,
+		TenantID:  tenantID,
+		UserID:    user.UserID,
+		UserRole:  user.Role,
+		TaskID:    taskID,
+		IP:        httpserver.ClientIP(r),
+		UserAgent: r.UserAgent(),
+	})
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	httpserver.WriteData(w, http.StatusOK, result)
+}
+
+// pauseTask 处理任务暂停请求，只允许 RUNNING 任务进入 PAUSED。
+func (h *taskHandler) pauseTask(w http.ResponseWriter, r *http.Request) {
+	user, tenantID, ok := principalFromRequest(w, r)
+	if !ok {
+		return
+	}
+	taskID, ok := taskIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.service.PauseTask(r.Context(), taskapi.PauseTaskInput{
+		TenantID:  tenantID,
+		UserID:    user.UserID,
+		UserRole:  user.Role,
+		TaskID:    taskID,
+		IP:        httpserver.ClientIP(r),
+		UserAgent: r.UserAgent(),
 	})
 	if err != nil {
 		httpserver.WriteError(w, r, err)
@@ -146,6 +186,62 @@ func (h *taskHandler) resumeTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.service.ResumeTask(r.Context(), taskapi.ResumeTaskInput{
+		TenantID:  tenantID,
+		UserID:    user.UserID,
+		UserRole:  user.Role,
+		TaskID:    taskID,
+		IP:        httpserver.ClientIP(r),
+		UserAgent: r.UserAgent(),
+	})
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	httpserver.WriteData(w, http.StatusOK, result)
+}
+
+// resumeFromCheckpoint 处理从指定 checkpoint 恢复任务的请求。
+func (h *taskHandler) resumeFromCheckpoint(w http.ResponseWriter, r *http.Request) {
+	user, tenantID, ok := principalFromRequest(w, r)
+	if !ok {
+		return
+	}
+	taskID, ok := taskIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	var req resumeFromCheckpointRequest
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	result, err := h.service.ResumeFromCheckpoint(r.Context(), taskapi.ResumeFromCheckpointInput{
+		TenantID:     tenantID,
+		UserID:       user.UserID,
+		UserRole:     user.Role,
+		TaskID:       taskID,
+		CheckpointID: req.CheckpointID,
+		IP:           httpserver.ClientIP(r),
+		UserAgent:    r.UserAgent(),
+	})
+	if err != nil {
+		httpserver.WriteError(w, r, err)
+		return
+	}
+	httpserver.WriteData(w, http.StatusOK, result)
+}
+
+// getTaskState 处理任务当前 AgentState 查询,用例层按角色控制完整 state 是否返回。
+func (h *taskHandler) getTaskState(w http.ResponseWriter, r *http.Request) {
+	user, tenantID, ok := principalFromRequest(w, r)
+	if !ok {
+		return
+	}
+	taskID, ok := taskIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.service.GetTaskState(r.Context(), taskapi.GetTaskStateInput{
 		TenantID: tenantID,
 		UserID:   user.UserID,
 		UserRole: user.Role,
@@ -196,12 +292,17 @@ func (h *taskHandler) decideToolCall(w http.ResponseWriter, r *http.Request, app
 		return
 	}
 	result, err := h.service.DecideToolCall(r.Context(), taskapi.DecideToolCallInput{
-		TenantID: tenantID,
-		UserID:   user.UserID,
-		UserRole: user.Role,
-		CallID:   callID,
-		Approve:  approve,
-		Comment:  req.Comment,
+		TenantID:      tenantID,
+		UserID:        user.UserID,
+		UserRole:      user.Role,
+		CallID:        callID,
+		Approve:       approve,
+		Comment:       req.Comment,
+		Note:          req.Note,
+		Reason:        req.Reason,
+		TerminateTask: req.TerminateTask,
+		IP:            httpserver.ClientIP(r),
+		UserAgent:     r.UserAgent(),
 	})
 	if err != nil {
 		httpserver.WriteError(w, r, err)
@@ -272,13 +373,20 @@ func (h *taskHandler) listTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tasks, err := h.service.ListTasks(r.Context(), taskapi.ListTasksInput{
-		TenantID: tenantID,
-		UserID:   user.UserID,
-		UserRole: user.Role,
-		Status:   status,
-		Page:     page,
-		PageSize: pageSize,
-		Sort:     sort,
+		TenantID:        tenantID,
+		UserID:          user.UserID,
+		UserRole:        user.Role,
+		Status:          status,
+		Goal:            query.Get("goal"),
+		FilterUserID:    query.Get("user_id"),
+		FilterTenantID:  query.Get("tenant_id"),
+		CreatedFrom:     query.Get("created_from"),
+		CreatedTo:       query.Get("created_to"),
+		WaitingApproval: query.Get("waiting_approval") == "true",
+		StoppedByLimit:  query.Get("stopped_by_limit") == "true",
+		Page:            page,
+		PageSize:        pageSize,
+		Sort:            sort,
 	})
 	if err != nil {
 		httpserver.WriteError(w, r, err)

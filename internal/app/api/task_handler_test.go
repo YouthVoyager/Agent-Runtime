@@ -222,15 +222,18 @@ func newTestTaskRouterWithEvents(service taskService, events eventService) http.
 }
 
 type fakeTaskService struct {
-	createTask      func(context.Context, taskapi.CreateTaskInput) (taskapi.CreatedTask, error)
-	getTask         func(context.Context, taskapi.GetTaskInput) (taskapi.TaskDetail, error)
-	listTasks       func(context.Context, taskapi.ListTasksInput) (taskapi.TaskPage, error)
-	cancelTask      func(context.Context, taskapi.CancelTaskInput) (taskapi.TaskStatusResult, error)
-	resumeTask      func(context.Context, taskapi.ResumeTaskInput) (taskapi.ResumeTaskResult, error)
-	decideToolCall  func(context.Context, taskapi.DecideToolCallInput) (taskapi.ToolCallDecisionResult, error)
-	listToolCalls   func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.ToolCallPage, error)
-	listCheckpoints func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.CheckpointPage, error)
-	listArtifacts   func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.ArtifactPage, error)
+	createTask           func(context.Context, taskapi.CreateTaskInput) (taskapi.CreatedTask, error)
+	getTask              func(context.Context, taskapi.GetTaskInput) (taskapi.TaskDetail, error)
+	listTasks            func(context.Context, taskapi.ListTasksInput) (taskapi.TaskPage, error)
+	cancelTask           func(context.Context, taskapi.CancelTaskInput) (taskapi.TaskStatusResult, error)
+	pauseTask            func(context.Context, taskapi.PauseTaskInput) (taskapi.TaskStatusResult, error)
+	resumeTask           func(context.Context, taskapi.ResumeTaskInput) (taskapi.ResumeTaskResult, error)
+	resumeFromCheckpoint func(context.Context, taskapi.ResumeFromCheckpointInput) (taskapi.ResumeTaskResult, error)
+	getTaskState         func(context.Context, taskapi.GetTaskStateInput) (taskapi.TaskStateResult, error)
+	decideToolCall       func(context.Context, taskapi.DecideToolCallInput) (taskapi.ToolCallDecisionResult, error)
+	listToolCalls        func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.ToolCallPage, error)
+	listCheckpoints      func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.CheckpointPage, error)
+	listArtifacts        func(context.Context, taskapi.ListTaskChildrenInput) (taskapi.ArtifactPage, error)
 }
 
 // CreateTask 调用测试注入的创建任务逻辑。
@@ -265,12 +268,36 @@ func (s *fakeTaskService) CancelTask(ctx context.Context, input taskapi.CancelTa
 	return s.cancelTask(ctx, input)
 }
 
+// PauseTask 调用测试注入的任务暂停逻辑。
+func (s *fakeTaskService) PauseTask(ctx context.Context, input taskapi.PauseTaskInput) (taskapi.TaskStatusResult, error) {
+	if s.pauseTask == nil {
+		return taskapi.TaskStatusResult{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 PauseTask")
+	}
+	return s.pauseTask(ctx, input)
+}
+
 // ResumeTask 调用测试注入的任务恢复逻辑。
 func (s *fakeTaskService) ResumeTask(ctx context.Context, input taskapi.ResumeTaskInput) (taskapi.ResumeTaskResult, error) {
 	if s.resumeTask == nil {
 		return taskapi.ResumeTaskResult{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 ResumeTask")
 	}
 	return s.resumeTask(ctx, input)
+}
+
+// ResumeFromCheckpoint 调用测试注入的指定 checkpoint 恢复逻辑。
+func (s *fakeTaskService) ResumeFromCheckpoint(ctx context.Context, input taskapi.ResumeFromCheckpointInput) (taskapi.ResumeTaskResult, error) {
+	if s.resumeFromCheckpoint == nil {
+		return taskapi.ResumeTaskResult{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 ResumeFromCheckpoint")
+	}
+	return s.resumeFromCheckpoint(ctx, input)
+}
+
+// GetTaskState 调用测试注入的任务状态查询逻辑。
+func (s *fakeTaskService) GetTaskState(ctx context.Context, input taskapi.GetTaskStateInput) (taskapi.TaskStateResult, error) {
+	if s.getTaskState == nil {
+		return taskapi.TaskStateResult{}, apperrors.New(apperrors.CodeNotImplemented, "fake 未实现 GetTaskState")
+	}
+	return s.getTaskState(ctx, input)
 }
 
 // DecideToolCall 调用测试注入的审批决策逻辑。

@@ -19,6 +19,7 @@ import (
 	"stableagent/internal/observability/tracing"
 	"stableagent/internal/security/authn"
 	"stableagent/internal/security/authz"
+	"stableagent/internal/usecase/auditlog"
 	apperrors "stableagent/pkg/errors"
 	"stableagent/pkg/ids"
 )
@@ -34,6 +35,8 @@ type Service struct {
 	queries       *db.Queries
 	eventNotifier persistedEventNotifier
 	cancelStore   cancelFlagStore
+	pauseStore    pauseFlagStore
+	auditLogger   *auditlog.Service
 }
 
 type persistedEventNotifier interface {
@@ -42,6 +45,12 @@ type persistedEventNotifier interface {
 
 type cancelFlagStore interface {
 	Set(ctx context.Context, taskID string) error
+}
+
+// pauseFlagStore 抽象暂停标记存储,Worker 在 step 边界读取该标记安全停下。
+type pauseFlagStore interface {
+	Set(ctx context.Context, taskID string) error
+	Clear(ctx context.Context, taskID string) error
 }
 
 type CreateTaskInput struct {
@@ -53,6 +62,9 @@ type CreateTaskInput struct {
 	Goal            string
 	Budget          domaintask.Budget
 	Constraints     json.RawMessage
+	// IP 和 UserAgent 仅用于审计日志记录,不参与业务逻辑。
+	IP        string
+	UserAgent string
 }
 
 type CreatedTask struct {
@@ -83,17 +95,26 @@ type TaskDetail struct {
 }
 
 type ListTasksInput struct {
-	TenantID string
-	UserID   string
-	UserRole string
-	Status   string
-	Page     int
-	PageSize int
-	Sort     string
+	TenantID        string
+	UserID          string
+	UserRole        string
+	Status          string
+	Goal            string
+	FilterUserID    string
+	FilterTenantID  string
+	CreatedFrom     string
+	CreatedTo       string
+	WaitingApproval bool
+	StoppedByLimit  bool
+	Page            int
+	PageSize        int
+	Sort            string
 }
 
 type TaskSummary struct {
 	TaskID      string          `json:"task_id"`
+	TenantID    string          `json:"tenant_id,omitempty"`
+	UserID      string          `json:"user_id,omitempty"`
 	Goal        string          `json:"goal"`
 	Status      string          `json:"status"`
 	Budget      json.RawMessage `json:"budget"`
@@ -125,11 +146,18 @@ func NewServiceWithEventNotifier(pool *pgxpool.Pool, notifier persistedEventNoti
 
 // NewServiceWithEventNotifierAndCancelStore 创建带事件推送和取消标记能力的任务 API 用例服务。
 func NewServiceWithEventNotifierAndCancelStore(pool *pgxpool.Pool, notifier persistedEventNotifier, cancelStore cancelFlagStore) *Service {
+	return NewServiceWithDeps(pool, notifier, cancelStore, nil, nil)
+}
+
+// NewServiceWithDeps 创建带完整依赖(事件推送、取消标记、暂停标记、审计日志)的任务 API 用例服务。
+func NewServiceWithDeps(pool *pgxpool.Pool, notifier persistedEventNotifier, cancelStore cancelFlagStore, pauseStore pauseFlagStore, auditLogger *auditlog.Service) *Service {
 	return &Service{
 		pool:          pool,
 		queries:       db.New(pool),
 		eventNotifier: notifier,
 		cancelStore:   cancelStore,
+		pauseStore:    pauseStore,
+		auditLogger:   auditLogger,
 	}
 }
 
@@ -300,12 +328,30 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (Create
 		// 事件必须在事务提交后推送，避免客户端收到数据库尚不可查询的 event_id。
 		s.eventNotifier.NotifyPersisted(ctx, eventFromCreatedRow(createdEvent))
 	}
+	s.audit(ctx, auditlog.LogInput{
+		ActorID:      input.UserID,
+		TenantID:     input.TenantID,
+		Action:       "task.create",
+		ResourceType: "task",
+		ResourceID:   task.TaskID,
+		After:        map[string]any{"goal": goal, "budget": input.Budget, "status": string(task.Status)},
+		IP:           input.IP,
+		UserAgent:    input.UserAgent,
+	})
 
 	return CreatedTask{
 		TaskID:    task.TaskID,
 		Status:    domaintask.StatusForAPI(string(task.Status)),
 		CreatedAt: pgTime(task.CreatedAt),
 	}, nil
+}
+
+// audit 是审计日志写入的便捷包装,未配置 auditLogger 时静默跳过。
+func (s *Service) audit(ctx context.Context, input auditlog.LogInput) {
+	if s.auditLogger == nil {
+		return
+	}
+	_ = s.auditLogger.Log(ctx, input)
 }
 
 // getTaskByClientRequestID 根据客户端幂等键查询已创建任务。
@@ -419,45 +465,7 @@ func (s *Service) ListTasks(ctx context.Context, input ListTasksInput) (TaskPage
 		status = parsed
 	}
 
-	// 多取一条用于判断是否还有下一页，避免额外执行 count 查询拖慢列表接口。
-	limit := int32(pageSize + 1)
-	offset := int32((page - 1) * pageSize)
-	canListTenant := authz.CanListTenantTasks(authn.User{TenantID: input.TenantID, UserID: input.UserID, Role: input.UserRole})
-
-	var tasks []db.AgentTask
-	if canListTenant {
-		if status != "" {
-			tasks, err = s.queries.ListAgentTasksByTenantAndStatus(ctx, db.ListAgentTasksByTenantAndStatusParams{
-				TenantID:   input.TenantID,
-				Status:     db.TaskStatus(status),
-				OffsetRows: offset,
-				LimitRows:  limit,
-			})
-		} else {
-			tasks, err = s.queries.ListAgentTasksByTenant(ctx, db.ListAgentTasksByTenantParams{
-				TenantID:   input.TenantID,
-				OffsetRows: offset,
-				LimitRows:  limit,
-			})
-		}
-	} else {
-		if status != "" {
-			tasks, err = s.queries.ListAgentTasksByUserAndStatus(ctx, db.ListAgentTasksByUserAndStatusParams{
-				TenantID:   input.TenantID,
-				UserID:     input.UserID,
-				Status:     db.TaskStatus(status),
-				OffsetRows: offset,
-				LimitRows:  limit,
-			})
-		} else {
-			tasks, err = s.queries.ListAgentTasksByUser(ctx, db.ListAgentTasksByUserParams{
-				TenantID:   input.TenantID,
-				UserID:     input.UserID,
-				OffsetRows: offset,
-				LimitRows:  limit,
-			})
-		}
-	}
+	tasks, err := s.listTasksFiltered(ctx, input, status, page, pageSize)
 	if err != nil {
 		return TaskPage{}, mapPostgresReadError(err)
 	}
@@ -508,6 +516,8 @@ func taskDetailFromDB(task db.AgentTask, currentStep int32) TaskDetail {
 func taskSummaryFromDB(task db.AgentTask) TaskSummary {
 	return TaskSummary{
 		TaskID:      task.TaskID,
+		TenantID:    task.TenantID,
+		UserID:      task.UserID,
 		Goal:        task.Goal,
 		Status:      domaintask.StatusForAPI(string(task.Status)),
 		Budget:      task.Budget,
@@ -516,6 +526,78 @@ func taskSummaryFromDB(task db.AgentTask) TaskSummary {
 		CreatedAt:   pgTime(task.CreatedAt),
 		UpdatedAt:   pgTime(task.UpdatedAt),
 	}
+}
+
+// listTasksFiltered 使用设计契约中的扩展过滤条件查询任务列表。
+func (s *Service) listTasksFiltered(ctx context.Context, input ListTasksInput, status domaintask.Status, page int, pageSize int) ([]db.AgentTask, error) {
+	user := authn.User{TenantID: input.TenantID, UserID: input.UserID, Role: input.UserRole}
+	conditions := []string{}
+	args := []any{}
+	tenantID, _ := authz.EffectiveTenantID(user, input.FilterTenantID)
+	if tenantID != "" {
+		conditions = append(conditions, fmt.Sprintf("tenant_id = %s", nextSQLArg(&args, tenantID)))
+	}
+	if !authz.CanListTenantTasks(user) {
+		conditions = append(conditions, fmt.Sprintf("user_id = %s", nextSQLArg(&args, input.UserID)))
+	} else if strings.TrimSpace(input.FilterUserID) != "" {
+		conditions = append(conditions, fmt.Sprintf("user_id = %s", nextSQLArg(&args, strings.TrimSpace(input.FilterUserID))))
+	}
+	effectiveStatus := status
+	if input.WaitingApproval {
+		effectiveStatus = domaintask.StatusWaitingApproval
+	}
+	if input.StoppedByLimit {
+		effectiveStatus = domaintask.StatusStoppedByLimit
+	}
+	if effectiveStatus != "" {
+		conditions = append(conditions, fmt.Sprintf("status = %s", nextSQLArg(&args, string(effectiveStatus))))
+	}
+	if goal := strings.TrimSpace(input.Goal); goal != "" {
+		conditions = append(conditions, fmt.Sprintf("goal ilike %s", nextSQLArg(&args, "%"+goal+"%")))
+	}
+	if from, err := time.Parse(time.RFC3339, strings.TrimSpace(input.CreatedFrom)); err == nil {
+		conditions = append(conditions, fmt.Sprintf("created_at >= %s", nextSQLArg(&args, from.UTC())))
+	}
+	if to, err := time.Parse(time.RFC3339, strings.TrimSpace(input.CreatedTo)); err == nil {
+		conditions = append(conditions, fmt.Sprintf("created_at <= %s", nextSQLArg(&args, to.UTC())))
+	}
+	limit := nextSQLArg(&args, int32(pageSize+1))
+	offset := nextSQLArg(&args, int32((page-1)*pageSize))
+	query := fmt.Sprintf(`
+select task_id, tenant_id, user_id, goal, status, budget, budget_usage, workflow_id, trace_id,
+       last_error_code, last_error_message, created_at, updated_at
+from agent_tasks
+%s
+order by created_at desc, task_id desc
+limit %s offset %s`, whereClause(conditions), limit, offset)
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tasks := []db.AgentTask{}
+	for rows.Next() {
+		var task db.AgentTask
+		if err := rows.Scan(&task.TaskID, &task.TenantID, &task.UserID, &task.Goal, &task.Status, &task.Budget, &task.BudgetUsage, &task.WorkflowID, &task.TraceID, &task.LastErrorCode, &task.LastErrorMessage, &task.CreatedAt, &task.UpdatedAt); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, rows.Err()
+}
+
+// nextSQLArg 追加 SQL 查询参数并返回 PostgreSQL 占位符。
+func nextSQLArg(args *[]any, value any) string {
+	*args = append(*args, value)
+	return fmt.Sprintf("$%d", len(*args))
+}
+
+// whereClause 拼接动态 WHERE 子句。
+func whereClause(conditions []string) string {
+	if len(conditions) == 0 {
+		return ""
+	}
+	return "where " + strings.Join(conditions, " and ")
 }
 
 // normalizePagination 规范化分页参数，并限制 offset 在 PostgreSQL int4 范围内。

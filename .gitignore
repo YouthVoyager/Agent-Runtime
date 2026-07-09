@@ -9,3 +9,4 @@ dist/
 !web-ui/dist/**
 tmp/
 config/local.env
+.pnpm-store/

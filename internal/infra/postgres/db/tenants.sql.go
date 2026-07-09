@@ -8,7 +8,62 @@ package db
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const createInvitedUser = `-- name: CreateInvitedUser :one
+insert into users (
+    tenant_id,
+    user_id,
+    email,
+    display_name,
+    role,
+    status,
+    metadata
+) values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    'ACTIVE',
+    '{}'::jsonb
+)
+returning tenant_id, user_id, email, display_name, role, status, metadata, created_at, updated_at, last_login_at
+`
+
+type CreateInvitedUserParams struct {
+	TenantID    string  `db:"tenant_id" json:"tenant_id"`
+	UserID      string  `db:"user_id" json:"user_id"`
+	Email       string  `db:"email" json:"email"`
+	DisplayName *string `db:"display_name" json:"display_name"`
+	Role        string  `db:"role" json:"role"`
+}
+
+func (q *Queries) CreateInvitedUser(ctx context.Context, arg CreateInvitedUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createInvitedUser,
+		arg.TenantID,
+		arg.UserID,
+		arg.Email,
+		arg.DisplayName,
+		arg.Role,
+	)
+	var i User
+	err := row.Scan(
+		&i.TenantID,
+		&i.UserID,
+		&i.Email,
+		&i.DisplayName,
+		&i.Role,
+		&i.Status,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
 
 const createTenant = `-- name: CreateTenant :one
 insert into tenants (
@@ -22,7 +77,7 @@ insert into tenants (
     $3,
     $4
 )
-returning tenant_id, name, status, metadata, created_at, updated_at
+returning tenant_id, name, status, metadata, created_at, updated_at, config
 `
 
 type CreateTenantParams struct {
@@ -47,6 +102,53 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Ten
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Config,
+	)
+	return i, err
+}
+
+const createTenantFull = `-- name: CreateTenantFull :one
+insert into tenants (
+    tenant_id,
+    name,
+    status,
+    metadata,
+    config
+) values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5
+)
+returning tenant_id, name, status, metadata, created_at, updated_at, config
+`
+
+type CreateTenantFullParams struct {
+	TenantID string          `db:"tenant_id" json:"tenant_id"`
+	Name     string          `db:"name" json:"name"`
+	Status   TenantStatus    `db:"status" json:"status"`
+	Metadata json.RawMessage `db:"metadata" json:"metadata"`
+	Config   json.RawMessage `db:"config" json:"config"`
+}
+
+func (q *Queries) CreateTenantFull(ctx context.Context, arg CreateTenantFullParams) (Tenant, error) {
+	row := q.db.QueryRow(ctx, createTenantFull,
+		arg.TenantID,
+		arg.Name,
+		arg.Status,
+		arg.Metadata,
+		arg.Config,
+	)
+	var i Tenant
+	err := row.Scan(
+		&i.TenantID,
+		&i.Name,
+		&i.Status,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Config,
 	)
 	return i, err
 }
@@ -69,7 +171,7 @@ insert into users (
     $6,
     $7
 )
-returning tenant_id, user_id, email, display_name, role, status, metadata, created_at, updated_at
+returning tenant_id, user_id, email, display_name, role, status, metadata, created_at, updated_at, last_login_at
 `
 
 type CreateUserParams struct {
@@ -103,12 +205,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
 const getTenant = `-- name: GetTenant :one
-select tenant_id, name, status, metadata, created_at, updated_at
+select tenant_id, name, status, metadata, created_at, updated_at, config
 from tenants
 where tenant_id = $1
 limit 1
@@ -124,12 +227,13 @@ func (q *Queries) GetTenant(ctx context.Context, tenantID string) (Tenant, error
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Config,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-select tenant_id, user_id, email, display_name, role, status, metadata, created_at, updated_at
+select tenant_id, user_id, email, display_name, role, status, metadata, created_at, updated_at, last_login_at
 from users
 where tenant_id = $1
   and user_id = $2
@@ -154,6 +258,245 @@ func (q *Queries) GetUser(ctx context.Context, arg GetUserParams) (User, error) 
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
+const listAllUsers = `-- name: ListAllUsers :many
+select tenant_id, user_id, email, display_name, role, status, metadata, created_at, updated_at, last_login_at
+from users
+order by created_at desc
+limit $2
+offset $1
+`
+
+type ListAllUsersParams struct {
+	OffsetRows int32 `db:"offset_rows" json:"offset_rows"`
+	LimitRows  int32 `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) ListAllUsers(ctx context.Context, arg ListAllUsersParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listAllUsers, arg.OffsetRows, arg.LimitRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.UserID,
+			&i.Email,
+			&i.DisplayName,
+			&i.Role,
+			&i.Status,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastLoginAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTenants = `-- name: ListTenants :many
+select tenant_id, name, status, metadata, created_at, updated_at, config
+from tenants
+order by created_at desc
+limit $2
+offset $1
+`
+
+type ListTenantsParams struct {
+	OffsetRows int32 `db:"offset_rows" json:"offset_rows"`
+	LimitRows  int32 `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) ListTenants(ctx context.Context, arg ListTenantsParams) ([]Tenant, error) {
+	rows, err := q.db.Query(ctx, listTenants, arg.OffsetRows, arg.LimitRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Tenant{}
+	for rows.Next() {
+		var i Tenant
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.Name,
+			&i.Status,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Config,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersByTenant = `-- name: ListUsersByTenant :many
+select tenant_id, user_id, email, display_name, role, status, metadata, created_at, updated_at, last_login_at
+from users
+where tenant_id = $1
+order by created_at desc
+limit $3
+offset $2
+`
+
+type ListUsersByTenantParams struct {
+	TenantID   string `db:"tenant_id" json:"tenant_id"`
+	OffsetRows int32  `db:"offset_rows" json:"offset_rows"`
+	LimitRows  int32  `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsersByTenant, arg.TenantID, arg.OffsetRows, arg.LimitRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.UserID,
+			&i.Email,
+			&i.DisplayName,
+			&i.Role,
+			&i.Status,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastLoginAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const tenantUsageToday = `-- name: TenantUsageToday :one
+select
+    count(distinct agent_tasks.task_id) filter (where agent_tasks.created_at >= $1)::bigint as tasks_today,
+    coalesce(sum((agent_tasks.budget_usage ->> 'used_tokens')::bigint) filter (where agent_tasks.created_at >= $1), 0)::bigint as tokens_today,
+    coalesce(sum((agent_tasks.budget_usage ->> 'used_cost_usd')::float8) filter (where agent_tasks.created_at >= $1), 0)::float8 as cost_today_usd
+from agent_tasks
+where agent_tasks.tenant_id = $2
+`
+
+type TenantUsageTodayParams struct {
+	Since    pgtype.Timestamptz `db:"since" json:"since"`
+	TenantID string             `db:"tenant_id" json:"tenant_id"`
+}
+
+type TenantUsageTodayRow struct {
+	TasksToday   int64   `db:"tasks_today" json:"tasks_today"`
+	TokensToday  int64   `db:"tokens_today" json:"tokens_today"`
+	CostTodayUsd float64 `db:"cost_today_usd" json:"cost_today_usd"`
+}
+
+func (q *Queries) TenantUsageToday(ctx context.Context, arg TenantUsageTodayParams) (TenantUsageTodayRow, error) {
+	row := q.db.QueryRow(ctx, tenantUsageToday, arg.Since, arg.TenantID)
+	var i TenantUsageTodayRow
+	err := row.Scan(&i.TasksToday, &i.TokensToday, &i.CostTodayUsd)
+	return i, err
+}
+
+const updateTenant = `-- name: UpdateTenant :one
+update tenants
+set name = $1,
+    status = $2,
+    config = $3,
+    updated_at = now()
+where tenant_id = $4
+returning tenant_id, name, status, metadata, created_at, updated_at, config
+`
+
+type UpdateTenantParams struct {
+	Name     string          `db:"name" json:"name"`
+	Status   TenantStatus    `db:"status" json:"status"`
+	Config   json.RawMessage `db:"config" json:"config"`
+	TenantID string          `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error) {
+	row := q.db.QueryRow(ctx, updateTenant,
+		arg.Name,
+		arg.Status,
+		arg.Config,
+		arg.TenantID,
+	)
+	var i Tenant
+	err := row.Scan(
+		&i.TenantID,
+		&i.Name,
+		&i.Status,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Config,
+	)
+	return i, err
+}
+
+const updateUser = `-- name: UpdateUser :one
+update users
+set role = $1,
+    status = $2,
+    display_name = $3,
+    updated_at = now()
+where tenant_id = $4
+  and user_id = $5
+returning tenant_id, user_id, email, display_name, role, status, metadata, created_at, updated_at, last_login_at
+`
+
+type UpdateUserParams struct {
+	Role        string     `db:"role" json:"role"`
+	Status      UserStatus `db:"status" json:"status"`
+	DisplayName *string    `db:"display_name" json:"display_name"`
+	TenantID    string     `db:"tenant_id" json:"tenant_id"`
+	UserID      string     `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUser,
+		arg.Role,
+		arg.Status,
+		arg.DisplayName,
+		arg.TenantID,
+		arg.UserID,
+	)
+	var i User
+	err := row.Scan(
+		&i.TenantID,
+		&i.UserID,
+		&i.Email,
+		&i.DisplayName,
+		&i.Role,
+		&i.Status,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastLoginAt,
 	)
 	return i, err
 }

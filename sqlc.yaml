@@ -6,6 +6,7 @@ sql:
       - "db/migrations/000002_week2_core_models.up.sql"
       - "db/migrations/000003_local_production_loop.up.sql"
       - "db/migrations/000004_design_alignment.up.sql"
+      - "db/migrations/000005_admin_console.up.sql"
     queries:
       - "db/queries"
     gen:

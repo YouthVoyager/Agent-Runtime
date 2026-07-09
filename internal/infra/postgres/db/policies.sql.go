@@ -10,11 +10,129 @@ import (
 	"encoding/json"
 )
 
+const createToolPolicy = `-- name: CreateToolPolicy :one
+insert into tenant_tool_policies (
+    policy_id,
+    tenant_id,
+    tool_name,
+    role,
+    effect,
+    max_risk_level,
+    require_approval,
+    max_calls_per_day,
+    argument_rules,
+    timeout_seconds,
+    config
+) values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    '{}'::jsonb
+)
+on conflict (tenant_id, tool_name, role) do update
+set effect = excluded.effect,
+    max_risk_level = excluded.max_risk_level,
+    require_approval = excluded.require_approval,
+    max_calls_per_day = excluded.max_calls_per_day,
+    argument_rules = excluded.argument_rules,
+    timeout_seconds = excluded.timeout_seconds,
+    updated_at = now()
+returning policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
+`
+
+type CreateToolPolicyParams struct {
+	PolicyID        string           `db:"policy_id" json:"policy_id"`
+	TenantID        string           `db:"tenant_id" json:"tenant_id"`
+	ToolName        string           `db:"tool_name" json:"tool_name"`
+	Role            string           `db:"role" json:"role"`
+	Effect          ToolPolicyEffect `db:"effect" json:"effect"`
+	MaxRiskLevel    RiskLevel        `db:"max_risk_level" json:"max_risk_level"`
+	RequireApproval bool             `db:"require_approval" json:"require_approval"`
+	MaxCallsPerDay  *int32           `db:"max_calls_per_day" json:"max_calls_per_day"`
+	ArgumentRules   json.RawMessage  `db:"argument_rules" json:"argument_rules"`
+	TimeoutSeconds  *int32           `db:"timeout_seconds" json:"timeout_seconds"`
+}
+
+func (q *Queries) CreateToolPolicy(ctx context.Context, arg CreateToolPolicyParams) (TenantToolPolicy, error) {
+	row := q.db.QueryRow(ctx, createToolPolicy,
+		arg.PolicyID,
+		arg.TenantID,
+		arg.ToolName,
+		arg.Role,
+		arg.Effect,
+		arg.MaxRiskLevel,
+		arg.RequireApproval,
+		arg.MaxCallsPerDay,
+		arg.ArgumentRules,
+		arg.TimeoutSeconds,
+	)
+	var i TenantToolPolicy
+	err := row.Scan(
+		&i.PolicyID,
+		&i.TenantID,
+		&i.ToolName,
+		&i.Effect,
+		&i.MaxRiskLevel,
+		&i.RequireApproval,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Role,
+		&i.MaxCallsPerDay,
+		&i.ArgumentRules,
+		&i.TimeoutSeconds,
+	)
+	return i, err
+}
+
+const disableToolPolicyByID = `-- name: DisableToolPolicyByID :one
+update tenant_tool_policies
+set effect = 'DENY',
+    updated_at = now()
+where tenant_id = $1
+  and policy_id = $2
+returning policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
+`
+
+type DisableToolPolicyByIDParams struct {
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	PolicyID string `db:"policy_id" json:"policy_id"`
+}
+
+func (q *Queries) DisableToolPolicyByID(ctx context.Context, arg DisableToolPolicyByIDParams) (TenantToolPolicy, error) {
+	row := q.db.QueryRow(ctx, disableToolPolicyByID, arg.TenantID, arg.PolicyID)
+	var i TenantToolPolicy
+	err := row.Scan(
+		&i.PolicyID,
+		&i.TenantID,
+		&i.ToolName,
+		&i.Effect,
+		&i.MaxRiskLevel,
+		&i.RequireApproval,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Role,
+		&i.MaxCallsPerDay,
+		&i.ArgumentRules,
+		&i.TimeoutSeconds,
+	)
+	return i, err
+}
+
 const getTenantToolPolicy = `-- name: GetTenantToolPolicy :one
-select policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at
+select policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
 from tenant_tool_policies
 where tenant_id = $1
   and tool_name = $2
+  and role = ''
 limit 1
 `
 
@@ -23,6 +141,7 @@ type GetTenantToolPolicyParams struct {
 	ToolName string `db:"tool_name" json:"tool_name"`
 }
 
+// worker 侧执行期策略校验只使用 role = ” 的租户默认策略,按角色维度的精细策略由管理台 API 层处理。
 func (q *Queries) GetTenantToolPolicy(ctx context.Context, arg GetTenantToolPolicyParams) (TenantToolPolicy, error) {
 	row := q.db.QueryRow(ctx, getTenantToolPolicy, arg.TenantID, arg.ToolName)
 	var i TenantToolPolicy
@@ -36,12 +155,50 @@ func (q *Queries) GetTenantToolPolicy(ctx context.Context, arg GetTenantToolPoli
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Role,
+		&i.MaxCallsPerDay,
+		&i.ArgumentRules,
+		&i.TimeoutSeconds,
+	)
+	return i, err
+}
+
+const getToolPolicyByID = `-- name: GetToolPolicyByID :one
+select policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
+from tenant_tool_policies
+where tenant_id = $1
+  and policy_id = $2
+limit 1
+`
+
+type GetToolPolicyByIDParams struct {
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	PolicyID string `db:"policy_id" json:"policy_id"`
+}
+
+func (q *Queries) GetToolPolicyByID(ctx context.Context, arg GetToolPolicyByIDParams) (TenantToolPolicy, error) {
+	row := q.db.QueryRow(ctx, getToolPolicyByID, arg.TenantID, arg.PolicyID)
+	var i TenantToolPolicy
+	err := row.Scan(
+		&i.PolicyID,
+		&i.TenantID,
+		&i.ToolName,
+		&i.Effect,
+		&i.MaxRiskLevel,
+		&i.RequireApproval,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Role,
+		&i.MaxCallsPerDay,
+		&i.ArgumentRules,
+		&i.TimeoutSeconds,
 	)
 	return i, err
 }
 
 const listTenantToolPolicies = `-- name: ListTenantToolPolicies :many
-select policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at
+select policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
 from tenant_tool_policies
 where tenant_id = $1
 order by tool_name asc
@@ -66,6 +223,10 @@ func (q *Queries) ListTenantToolPolicies(ctx context.Context, tenantID string) (
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Role,
+			&i.MaxCallsPerDay,
+			&i.ArgumentRules,
+			&i.TimeoutSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -75,6 +236,171 @@ func (q *Queries) ListTenantToolPolicies(ctx context.Context, tenantID string) (
 		return nil, err
 	}
 	return items, nil
+}
+
+const listToolPoliciesFiltered = `-- name: ListToolPoliciesFiltered :many
+select policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
+from tenant_tool_policies
+where tenant_id = $1
+  and ($2::text = '' or tool_name = $2)
+  and ($3::text = '' or role = $3)
+order by tool_name asc, role asc
+limit $5
+offset $4
+`
+
+type ListToolPoliciesFilteredParams struct {
+	TenantID   string `db:"tenant_id" json:"tenant_id"`
+	ToolName   string `db:"tool_name" json:"tool_name"`
+	Role       string `db:"role" json:"role"`
+	OffsetRows int32  `db:"offset_rows" json:"offset_rows"`
+	LimitRows  int32  `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) ListToolPoliciesFiltered(ctx context.Context, arg ListToolPoliciesFilteredParams) ([]TenantToolPolicy, error) {
+	rows, err := q.db.Query(ctx, listToolPoliciesFiltered,
+		arg.TenantID,
+		arg.ToolName,
+		arg.Role,
+		arg.OffsetRows,
+		arg.LimitRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TenantToolPolicy{}
+	for rows.Next() {
+		var i TenantToolPolicy
+		if err := rows.Scan(
+			&i.PolicyID,
+			&i.TenantID,
+			&i.ToolName,
+			&i.Effect,
+			&i.MaxRiskLevel,
+			&i.RequireApproval,
+			&i.Config,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Role,
+			&i.MaxCallsPerDay,
+			&i.ArgumentRules,
+			&i.TimeoutSeconds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listToolPoliciesForToolRole = `-- name: ListToolPoliciesForToolRole :many
+select policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
+from tenant_tool_policies
+where tenant_id = $1
+  and tool_name = $2
+  and (role = $3 or role = '')
+order by role desc
+limit 5
+`
+
+type ListToolPoliciesForToolRoleParams struct {
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	ToolName string `db:"tool_name" json:"tool_name"`
+	Role     string `db:"role" json:"role"`
+}
+
+// 策略模拟器按 tenant + tool 查询候选策略,再由应用层按角色精确匹配优先。
+func (q *Queries) ListToolPoliciesForToolRole(ctx context.Context, arg ListToolPoliciesForToolRoleParams) ([]TenantToolPolicy, error) {
+	rows, err := q.db.Query(ctx, listToolPoliciesForToolRole, arg.TenantID, arg.ToolName, arg.Role)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TenantToolPolicy{}
+	for rows.Next() {
+		var i TenantToolPolicy
+		if err := rows.Scan(
+			&i.PolicyID,
+			&i.TenantID,
+			&i.ToolName,
+			&i.Effect,
+			&i.MaxRiskLevel,
+			&i.RequireApproval,
+			&i.Config,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Role,
+			&i.MaxCallsPerDay,
+			&i.ArgumentRules,
+			&i.TimeoutSeconds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateToolPolicyByID = `-- name: UpdateToolPolicyByID :one
+update tenant_tool_policies
+set effect = $1,
+    max_risk_level = $2,
+    require_approval = $3,
+    max_calls_per_day = $4,
+    argument_rules = $5,
+    timeout_seconds = $6,
+    updated_at = now()
+where tenant_id = $7
+  and policy_id = $8
+returning policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
+`
+
+type UpdateToolPolicyByIDParams struct {
+	Effect          ToolPolicyEffect `db:"effect" json:"effect"`
+	MaxRiskLevel    RiskLevel        `db:"max_risk_level" json:"max_risk_level"`
+	RequireApproval bool             `db:"require_approval" json:"require_approval"`
+	MaxCallsPerDay  *int32           `db:"max_calls_per_day" json:"max_calls_per_day"`
+	ArgumentRules   json.RawMessage  `db:"argument_rules" json:"argument_rules"`
+	TimeoutSeconds  *int32           `db:"timeout_seconds" json:"timeout_seconds"`
+	TenantID        string           `db:"tenant_id" json:"tenant_id"`
+	PolicyID        string           `db:"policy_id" json:"policy_id"`
+}
+
+func (q *Queries) UpdateToolPolicyByID(ctx context.Context, arg UpdateToolPolicyByIDParams) (TenantToolPolicy, error) {
+	row := q.db.QueryRow(ctx, updateToolPolicyByID,
+		arg.Effect,
+		arg.MaxRiskLevel,
+		arg.RequireApproval,
+		arg.MaxCallsPerDay,
+		arg.ArgumentRules,
+		arg.TimeoutSeconds,
+		arg.TenantID,
+		arg.PolicyID,
+	)
+	var i TenantToolPolicy
+	err := row.Scan(
+		&i.PolicyID,
+		&i.TenantID,
+		&i.ToolName,
+		&i.Effect,
+		&i.MaxRiskLevel,
+		&i.RequireApproval,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Role,
+		&i.MaxCallsPerDay,
+		&i.ArgumentRules,
+		&i.TimeoutSeconds,
+	)
+	return i, err
 }
 
 const upsertTenantToolPolicy = `-- name: UpsertTenantToolPolicy :one
@@ -101,7 +427,7 @@ set effect = excluded.effect,
     require_approval = excluded.require_approval,
     config = excluded.config,
     updated_at = now()
-returning policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at
+returning policy_id, tenant_id, tool_name, effect, max_risk_level, require_approval, config, created_at, updated_at, role, max_calls_per_day, argument_rules, timeout_seconds
 `
 
 type UpsertTenantToolPolicyParams struct {
@@ -135,6 +461,10 @@ func (q *Queries) UpsertTenantToolPolicy(ctx context.Context, arg UpsertTenantTo
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Role,
+		&i.MaxCallsPerDay,
+		&i.ArgumentRules,
+		&i.TimeoutSeconds,
 	)
 	return i, err
 }

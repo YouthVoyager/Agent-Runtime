@@ -13,6 +13,7 @@ import (
 	redisinfra "stableagent/internal/infra/redis"
 	"stableagent/internal/security/authn"
 	httpserver "stableagent/internal/transport/http"
+	"stableagent/internal/usecase/auditlog"
 	"stableagent/internal/usecase/eventapi"
 	"stableagent/internal/usecase/taskapi"
 )
@@ -30,7 +31,8 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 	eventBus := redisinfra.NewEventBus(cfg.RedisAddr, logger)
 	cancelStore := redisinfra.NewCancelStore(cfg.RedisAddr)
 	eventService := eventapi.NewService(pool, eventHub, eventBus, logger)
-	taskService := taskapi.NewServiceWithEventNotifierAndCancelStore(pool, eventService, cancelStore)
+	auditLogger := auditlog.NewService(pool, logger)
+	taskService := taskapi.NewServiceWithDeps(pool, eventService, cancelStore, nil, auditLogger)
 
 	eventBusCtx, cancelEventBus := context.WithCancel(context.Background())
 	if eventBus != nil {
@@ -43,6 +45,7 @@ func RegisterRoutes(router chi.Router, cfg config.Config, logger *slog.Logger) (
 
 	registerPublicRoutes(router, cfg)
 	registerTaskRoutes(router, taskService, eventService, cfg.JWTSecret, logger)
+	registerAdminConsoleRoutes(router, pool, cfg, cfg.JWTSecret, logger, auditLogger)
 	registerWebRoutes(router, cfg, logger)
 
 	logger.Info("api-service 路由注册完成")
@@ -86,7 +89,10 @@ func registerTaskRoutes(router chi.Router, service taskService, events eventServ
 		r.Get("/api/v1/tasks", handler.listTasks)
 		r.Get("/api/v1/tasks/{task_id}", handler.getTask)
 		r.Post("/api/v1/tasks/{task_id}/cancel", handler.cancelTask)
+		r.Post("/api/v1/tasks/{task_id}/pause", handler.pauseTask)
 		r.Post("/api/v1/tasks/{task_id}/resume", handler.resumeTask)
+		r.Post("/api/v1/tasks/{task_id}/resume-from-checkpoint", handler.resumeFromCheckpoint)
+		r.Get("/api/v1/tasks/{task_id}/state", handler.getTaskState)
 		r.Get("/api/v1/tasks/{task_id}/events", eventHandler.listTaskEvents)
 		r.Get("/api/v1/tasks/{task_id}/events/stream", eventHandler.streamTaskEvents)
 		r.Get("/api/v1/tasks/{task_id}/tool-calls", handler.listToolCalls)

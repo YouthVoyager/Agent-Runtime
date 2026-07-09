@@ -208,6 +208,39 @@ func (q *Queries) ExpireApproval(ctx context.Context, arg ExpireApprovalParams) 
 	return i, err
 }
 
+const getApproval = `-- name: GetApproval :one
+select approval_id, task_id, tenant_id, call_id, approver_id, status, risk_level, approval_reason, comment, expires_at, decided_at, created_at
+from approvals
+where tenant_id = $1
+  and approval_id = $2
+limit 1
+`
+
+type GetApprovalParams struct {
+	TenantID   string `db:"tenant_id" json:"tenant_id"`
+	ApprovalID string `db:"approval_id" json:"approval_id"`
+}
+
+func (q *Queries) GetApproval(ctx context.Context, arg GetApprovalParams) (Approval, error) {
+	row := q.db.QueryRow(ctx, getApproval, arg.TenantID, arg.ApprovalID)
+	var i Approval
+	err := row.Scan(
+		&i.ApprovalID,
+		&i.TaskID,
+		&i.TenantID,
+		&i.CallID,
+		&i.ApproverID,
+		&i.Status,
+		&i.RiskLevel,
+		&i.ApprovalReason,
+		&i.Comment,
+		&i.ExpiresAt,
+		&i.DecidedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getApprovalByCall = `-- name: GetApprovalByCall :one
 select approval_id, task_id, tenant_id, call_id, approver_id, status, risk_level, approval_reason, comment, expires_at, decided_at, created_at
 from approvals
